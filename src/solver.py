@@ -511,7 +511,7 @@ class RNNLM_Trainer(Solver):
     def valid(self):
         self.rnnlm.eval()
 
-        dev_ppx = 0.0
+        print_loss = 0.0
         dev_size = 0 
 
         for cur_b,y in enumerate(self.dev_set):
@@ -521,10 +521,11 @@ class RNNLM_Trainer(Solver):
             ans_len = torch.sum(y!=0,dim=-1)
             _, prob = self.rnnlm(y[:,:-1],ans_len)
             loss = F.cross_entropy(prob.view(-1,prob.shape[-1]), y[:,1:].contiguous().view(-1), ignore_index=0)
-            dev_ppx += torch.exp(loss.cpu()).item()*y.shape[0]
+            print_loss += loss.clone().detach() * y.shape[0]
             dev_size += y.shape[0]
 
-        dev_ppx /= dev_size
+        print_loss /= dev_size
+        dev_ppx = torch.exp(print_loss).cpu().item()
         self.log.add_scalars('perplexity',{'dev':dev_ppx},self.step)
         
         # Store model with the best perplexity

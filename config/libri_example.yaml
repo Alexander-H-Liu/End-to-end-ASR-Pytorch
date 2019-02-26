@@ -30,7 +30,7 @@ clm:
     type: 'Adam'                              # Optimizer used for training (adam)
     learning_rate: 0.0001                     # Learning rate for opt
     gp_lambda: 10                             # Weight for gradient penalty
-    update_freq: 1                            # Update freqency for CLM
+    update_freq: 5                            # Update freqency for CLM
   network:
     dim: '128_128'
     kernel_size: '2_3'

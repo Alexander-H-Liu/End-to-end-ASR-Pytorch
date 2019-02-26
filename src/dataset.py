@@ -117,7 +117,7 @@ class LibriDataset(Dataset):
 
 
 def LoadDataset(split, text_only, data_path, batch_size, max_timestep, max_label_len, use_gpu, n_jobs,
-                dataset, train_set, dev_set, test_set, dev_batch_size,**kwargs):
+                dataset, train_set, dev_set, test_set, dev_batch_size, decode_beam_size,**kwargs):
     if split=='train':
         bs = batch_size
         shuffle = True
@@ -129,7 +129,7 @@ def LoadDataset(split, text_only, data_path, batch_size, max_timestep, max_label
         sets = dev_set
         drop_too_long = True
     elif split=='test':
-        bs = 1
+        bs = 1 if decode_beam_size>1 else dev_batch_size
         n_jobs = 1
         shuffle = False
         sets = test_set
