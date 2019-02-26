@@ -11,25 +11,39 @@ from tqdm import tqdm
 import pickle
 import numpy as np
 import pandas as pd
+from subprocess import call
 
 """
+1. File/directory names with <> can be modified, otherwise fixed.
+2. lm_corpus.txt is generated for language model training.
+3. Besides transcripts, other text sequences can also be included in lm_corpus.txt for language model training.
+
+Directory tree should be like...
 <data_path>(corpus name)
 ├── <train>
 |   ├── audio
 |   |   ├── <1.mp3>
 |   |   └── <2.mp3>
 |   └── transcript.csv
-└── <test>
-    ├── audio
-    |   ├── <1.mp3>
-    |   └── <2.mp3>
-    └── transcript.csv
+├── <test>
+|   ├── audio
+|   |   ├── <1.mp3>
+|   |   └── <2.mp3>
+|   └── transcript.csv
+└── lm_corpus.txt
 
 In transcript.csv...
 audio,text
-<1.mp3>,<blablabla>
-<2.mp3>,<blabla>
+<1.mp3>,<How are you?>
+<2.mp3>,<How's it going?>
+
+In lm.corpus.txt...
+<How are you?>   
+<How's it going?>
+...
+<This is an example.>
 """
+
 def change_fe(cur_path, chg_dir, file_extension):
     """ change file extension """
     _, file_name = os.path.split(cur_path)
@@ -55,7 +69,6 @@ def bpe(paras, corpus, dim, sets, bpe_dir):
             tf.write(text + '\n')
 
     # Train BPE
-    from subprocess import call
     call(['spm_train',
           '--input=' + os.path.join(bpe_dir, 'transcript.txt'),
           '--model_prefix=' + os.path.join(bpe_dir, 'bpe'),
@@ -121,6 +134,27 @@ def feature_extract(paras, sets, output_dir, bpe_dir, encode_table):
 
     print('All done, saved at', output_dir, 'exit.')
 
+def lm_corpus(paras, bpe_dir, encode_table):
+    call(['spm_encode',
+          '--model='+os.path.join(bpe_dir, 'bpe.model'),
+          '--output_format=piece'
+        ],stdin=open(join(paras.data_path, 'lm_corpus.txt'), 'r'),
+          stdout=open(join(bpe_dir, 'encode', 'lm_corpus.txt'), 'w'))
+    tr_y = []
+    with open(join(bpe_dir, 'encode', 'lm_corpus.txt'), 'r') as f:
+        for line in f: tr_y.append(line[:-1].split(' '))
+    tr_y, encode_table = encode_target(tr_y, table=encode_table, mode='subword', max_idx=paras.n_tokens)
+    tr_y = ['_'.join([str(x) for x in y]) for y in tr_y]
+    num_valid = min(20000, len(tr_y)//10)
+    va_y = tr_y[-num_valid:]
+    tr_y = tr_y[:-num_valid]
+    dummy = ['' for _ in tr_y]
+    df = pd.DataFrame(data={'file_path':dummy, 'length': dummy, 'label':tr_y})
+    df.to_csv(join(output_dir, 'lm_corpus.csv'))
+    dummy = ['' for _ in va_y]
+    df = pd.DataFrame(data={'file_path':dummy, 'length': dummy, 'label':va_y})
+    df.to_csv(join(output_dir, 'lm_corpus_valid.csv'))
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Preprocess program for Corpus.')
     parser.add_argument('--data_path', type=str, help='List of path to raw dataset')
@@ -147,3 +181,4 @@ if __name__ == "__main__":
     # BPE training
     encode_table = bpe(paras, corpus, dim, sets, bpe_dir)
     feature_extract(paras, sets, output_dir, bpe_dir, encode_table)
+    lm_corpus(paras, bpe_dir, encode_table)
