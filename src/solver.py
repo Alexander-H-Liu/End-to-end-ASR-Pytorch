@@ -344,8 +344,8 @@ class Tester(Solver):
         test_cer = 0.0
         self.decode_beam_size = self.config['solver']['decode_beam_size']
         self.verbose('Start decoding with beam search, beam size = '+str(self.config['solver']['decode_beam_size']))
-        #self.test_set = [(x[0].clone(),y[0].clone()) for x,y in self.test_set]
         self.verbose('Number of utts to decode : {}, decoding with {} threads.'.format(len(self.test_set),self.njobs))
+        ## self.test_set = [(x,y) for (x,y) in self.test_set][::10]
         _ = Parallel(n_jobs=self.njobs)(delayed(self.beam_decode)(x[0],y[0].tolist()[0]) for x,y in tqdm(self.test_set))
         
         self.verbose('Decode done, best results at {}.'.format(str(os.path.join(self.ckpdir,self.decode_file+'.txt'))))

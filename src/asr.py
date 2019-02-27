@@ -175,6 +175,7 @@ class Seq2Seq(nn.Module):
         att_maps = None
         lm_hidden = None
 
+
         # CTC based decoding
         if self.joint_ctc:
             ctc_output = F.log_softmax(self.ctc_layer(encode_feature),dim=-1)
@@ -217,7 +218,7 @@ class Seq2Seq(nn.Module):
                         
                         #ctc_prob, ctc_state = ctc_prefix.full_compute(prev_output.outIndex,prev_output.ctc_state,candidates)
                         ctc_prob, ctc_state = ctc_prefix.cheap_compute(prev_output.outIndex,prev_output.ctc_state,candidates)
-                        
+
                         # TODO : study why ctc_char (slightly) > 0 sometimes
                         ctc_char = torch.FloatTensor(ctc_prob - prev_output.ctc_prob).to(cur_device)
                         

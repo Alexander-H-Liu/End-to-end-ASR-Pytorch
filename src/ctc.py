@@ -48,9 +48,9 @@ class CTCPrefixScore():
         for t in range(start,self.input_length):
             # prev_blank
             prev_blank = np.full((self.odim),r_prev[t-1,1],dtype=np.float32)
-            prev_blank[last_char] = self.logzero
             # prev_nonblank
             prev_nonblank = np.full((self.odim),r_prev[t-1,0],dtype=np.float32)
+            prev_nonblank[last_char] = self.logzero
             
             phi = np.logaddexp(prev_nonblank, prev_blank)
             # P(h|current step is non-blank) = [ P(prev. step = y) + P()]*P(c)
@@ -85,11 +85,12 @@ class CTCPrefixScore():
         for t in range(start,self.input_length):
             # prev_blank
             prev_blank = np.full((odim),r_prev[t-1,1],dtype=np.float32)
-            if last_char in candidates:
-                prev_blank[candidates.index(last_char)] = self.logzero
+            
             # prev_nonblank
             prev_nonblank = np.full((odim),r_prev[t-1,0],dtype=np.float32)
-            
+            if last_char in candidates:
+                prev_nonblank[candidates.index(last_char)] = self.logzero
+
             phi = np.logaddexp(prev_nonblank, prev_blank)
             # P(h|current step is non-blank) = [ P(prev. step = y) + P()]*P(c)
             r[t,0,:] = np.logaddexp(r[t-1,0,:],phi) + self.x[t,candidates]
@@ -97,7 +98,7 @@ class CTCPrefixScore():
             r[t,1,:] = np.logaddexp(r[t-1,1,:],r[t-1,0,:]) + self.x[t,self.blank] 
             psi = np.logaddexp(psi,phi+self.x[t,candidates])
 
-        #psi[self.eos] = np.logaddexp(r_prev[-1,0], r_prev[-1,1]) # TODO: checkout
+        psi[self.eos] = np.logaddexp(r_prev[-1,0], r_prev[-1,1]) 
         return psi,np.rollaxis(r, 2)
 
         
