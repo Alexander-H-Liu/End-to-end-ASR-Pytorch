@@ -48,9 +48,9 @@ class CTCPrefixScore():
         for t in range(start,self.input_length):
             # prev_blank
             prev_blank = np.full((self.odim),r_prev[t-1,1],dtype=np.float32)
-            prev_blank[last_char] = self.logzero
             # prev_nonblank
             prev_nonblank = np.full((self.odim),r_prev[t-1,0],dtype=np.float32)
+            prev_nonblank[last_char] = self.logzero
             
             phi = np.logaddexp(prev_nonblank, prev_blank)
             # P(h|current step is non-blank) = [ P(prev. step = y) + P()]*P(c)
@@ -86,7 +86,7 @@ class CTCPrefixScore():
             # prev_blank
             prev_blank = np.full((odim),r_prev[t-1,1],dtype=np.float32)
             if last_char in candidates:
-                prev_blank[candidates.index(last_char)] = self.logzero
+                prev_nonblank[candidates.index(last_char)] = self.logzero
             # prev_nonblank
             prev_nonblank = np.full((odim),r_prev[t-1,0],dtype=np.float32)
             
