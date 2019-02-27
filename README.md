@@ -135,7 +135,7 @@ Rest of the options are *ineffective*  in the testing phase.
 ## Acknowledgements 
 - Parts of the implementation refer to [ESPnet](https://github.com/espnet/espnet), a great end-to-end speech processing toolkit by Watanabe *et al*.
 - Special thanks to [William Chan](http://williamchan.ca/), the first author of LAS, for answering my questions during implementation.
-- Thanks [xiaoming](https://github.com/lezasantaizi), [Odie Ko](https://github.com/odie2630463) and [b-etienne](https://github.com/b-etienne) for identifying several issues in our implementation. 
+- Thanks [xiaoming](https://github.com/lezasantaizi), [Odie Ko](https://github.com/odie2630463), [b-etienne](https://github.com/b-etienne), [Jinserk Baik](https://github.com/jinserk) and [Zhong-Yi Li](https://github.com/Chung-I) for identifying several issues in our implementation. 
 
 ## Reference
 
