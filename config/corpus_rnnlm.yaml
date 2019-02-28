@@ -1,0 +1,32 @@
+# Config for lm corpus generated from preprocess_corpus.py
+rnn_lm:
+  optimizer: 
+    type: 'Adam'                              # Optimizer used for training (adam)
+    learning_rate: 0.0001                     # Learning rate for opt
+  model_para:
+    emb_dim: 650
+    h_dim: 650
+    layers: 2
+    rnn: 'LSTM'
+    dropout_rate: 0.5
+
+solver:
+  # Data options
+  dataset: 'Librispeech'                      # 
+  data_path: '/data/corpus/ASR_feature/Gigasummary_fbank80_subword5000' # Source data path
+  n_jobs: 4                                   # Subprocess used for torch Dataloader
+  max_label_len: 400                          # Max length for output sequence (0 for no restriction)
+  # Training options
+  train_set: ['lm_corpus']                    #
+  batch_size: 32                              # training batch size
+  apex: True                                  # Use APEX (see https://github.com/NVIDIA/apex for more details)
+  total_steps: 3000000                        # total steps for training                         
+  # Validation options
+  dev_set: ['lm_corpus_valid']                      
+  dev_batch_size: 32                             
+  dev_step: 1000
+  dev_metric: 'dev_loss'
+  # Misc
+  max_timestep: 0
+  test_set: ['']
+  decode_beam_size: 1 

@@ -146,11 +146,9 @@ def LoadDataset(split, text_only, data_path, batch_size, max_timestep, max_label
         assert not text_only,'TIMIT does not support text only.'
         ds = TimitDataset(file_path=data_path, sets=sets, max_timestep=max_timestep, 
                            max_label_len=max_label_len, bucket_size=bs)
-    elif dataset.upper() =="LIBRISPEECH":
+    else:
         ds = LibriDataset(file_path=data_path, sets=sets, max_timestep=max_timestep,text_only=text_only,
                            max_label_len=max_label_len, bucket_size=bs,drop=drop_too_long)
-    else:
-        raise ValueError('Unsupported Dataset: '+dataset)
 
     return  DataLoader(ds, batch_size=1,shuffle=shuffle,drop_last=False,num_workers=n_jobs,pin_memory=use_gpu)
 

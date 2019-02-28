@@ -40,8 +40,12 @@ if not paras.rnnlm:
         # Test ASR
         from src.solver import Tester as Solver
 else:
-    # Train RNNLM
-    from src.solver import RNNLM_Trainer as Solver
+    if not paras.test:
+        # Train RNNLM
+        from src.solver import RNNLM_Trainer as Solver
+    else:
+        # Test RNNLM 
+        from src.solver import RNNLM_Tester as Solver
 
 solver = Solver(config,paras)
 solver.load_data()

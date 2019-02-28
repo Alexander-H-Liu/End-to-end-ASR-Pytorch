@@ -535,3 +535,41 @@ class RNNLM_Trainer(Solver):
             torch.save(self.rnnlm,os.path.join(self.ckpdir,'rnnlm'))
 
         self.rnnlm.train()
+
+class RNNLM_Tester(Solver):
+    ''' Tester for RNN-LM only'''
+    def __init__(self, config, paras):
+        super(RNNLM_Tester, self).__init__(config,paras)
+
+    def load_data(self):
+        ''' Load testing set'''
+        self.verbose('Loading text data from '+self.config['solver']['data_path'])
+        setattr(self,'test_set',LoadDataset('test',text_only=True,use_gpu=self.paras.gpu,**self.config['solver']))
+
+    def set_model(self):
+        ''' Load saved LM '''
+        self.verbose('Load LM model from ' + os.path.join(self.ckpdir))
+        self.rnnlm = torch.load(os.path.join(self.ckpdir, 'rnnlm'))
+        self.rnnlm = self.rnnlm.to(self.device)
+        self.rnnlm.eval()
+
+    def exec(self):
+        self.rnnlm.eval()
+
+        print_loss = 0.0
+        dev_size = 0 
+
+        with torch.no_grad():
+            for cur_b,y in enumerate(self.test_set):
+                self.progress(' '.join(['Testing step -', '(',str(cur_b),'/',str(len(self.test_set)),')']))
+                if len(y.shape)==3: y = y.squeeze(0)
+                y = y.to(device = self.device,dtype=torch.long)
+                ans_len = torch.sum(y!=0,dim=-1)
+                _, prob = self.rnnlm(y[:,:-1],ans_len)
+                loss = F.cross_entropy(prob.view(-1,prob.shape[-1]), y[:,1:].contiguous().view(-1), ignore_index=0)
+                print_loss += loss.clone().detach() * y.shape[0]
+                dev_size += y.shape[0]
+
+        print_loss /= dev_size
+        dev_ppx = torch.exp(print_loss).cpu().item()
+        self.verbose('perplexity: {}'.format(dev_ppx))
