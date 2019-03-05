@@ -12,11 +12,11 @@ from src.asr import Seq2Seq
 from src.rnnlm import RNN_LM
 from src.clm import CLM_wrapper
 from src.dataset import LoadDataset
-from src.postprocess import Mapper,cal_acc,cal_cer,draw_att
+from src.postprocess import Mapper,cal_acc,cal_cer,draw_att,human_format
 
-
+# TODO : Move these to config
 VAL_STEP = 30        # Additional Inference Timesteps to run during validation (to calculate CER)
-TRAIN_WER_STEP = 250 # steps for debugging info.
+TRAIN_WER_STEP = 500 # steps for debugging info.
 GRAD_CLIP = 5
 CLM_MIN_SEQ_LEN = 5
 
@@ -28,12 +28,17 @@ class Solver():
         self.paras = paras
         self.device = torch.device('cuda') if (self.paras.gpu and torch.cuda.is_available()) else torch.device('cpu')
 
+        # Name experiments (if none, automatically named after config file)
         self.exp_name = paras.name
         if self.exp_name is None:
             self.exp_name = '_'.join([paras.config.split('/')[-1].replace('.yaml',''),'sd'+str(paras.seed)])
-        if not os.path.exists(paras.ckpdir):os.makedirs(paras.ckpdir)
+        
+        # Setup directories 
+        if not os.path.exists(paras.ckpdir):
+            os.makedirs(paras.ckpdir)
         self.ckpdir = os.path.join(paras.ckpdir,self.exp_name)
-        if not os.path.exists(self.ckpdir):os.makedirs(self.ckpdir)
+        if not os.path.exists(self.ckpdir):
+            os.makedirs(self.ckpdir)
         
         # Load Mapper for idx2token
         self.mapper = Mapper(config['solver']['data_path'])
@@ -41,12 +46,25 @@ class Solver():
     def verbose(self,msg):
         ''' Verbose function for print information to stdout'''
         if self.paras.verbose:
-            print('[INFO]',msg)
+            print('[INFO] {}'.format(msg).ljust(100))
    
     def progress(self,msg):
         ''' Verbose function for updating progress on stdout'''
-        if self.paras.verbose:
-            print(msg+'                              ',end='\r')
+        if self.paras.verbose and self.step%TRAIN_WER_STEP==0:
+            print('[{}] {}'.format(human_format(self.step),msg).ljust(100),end='\r')
+
+    def fetch_data(self,x,y):
+        '''Unbucket batch and compute input length & label length'''
+        if len(x.shape)==4: x = x.squeeze(0)
+        if len(y.shape)==3: y = y.squeeze(0)
+        x = x.to(device = self.device,dtype=torch.float32)
+        y = y.to(device = self.device,dtype=torch.long)
+        state_len = torch.sum(torch.sum(x.cpu(),dim=-1)!=0,dim=-1)
+        state_len = [int(sl) for sl in state_len]
+        ans_len = int(torch.max(torch.sum(y!=0,dim=-1)))
+        label = y[:,1:ans_len+1].contiguous()
+        
+        return x,y,state_len,ans_len,label
 
 
 class Trainer(Solver):
@@ -92,6 +110,8 @@ class Trainer(Solver):
         # Involve CTC
         self.ctc_loss = torch.nn.CTCLoss(blank=0, reduction='mean')
         self.ctc_weight = self.config['asr_model']['optimizer']['joint_ctc']
+        self.enable_ctc = self.ctc_weight > 0
+        self.enable_att = self.ctc_weight < 1
         
         # TODO: load pre-trained model
         if self.paras.load:
@@ -118,35 +138,25 @@ class Trainer(Solver):
     def exec(self):
         ''' Training End-to-end ASR system'''
         self.verbose('Training set total '+str(len(self.train_set))+' batches.')
+        tr_ter = 1.0
 
         while self.step< self.max_step:
             for x,y in self.train_set:
-                self.progress('Training step - '+str(self.step))
-                
-                # Perform teacher forcing rate decaying
-                tf_rate = self.tf_start - self.step*(self.tf_start-self.tf_end)/self.max_step
-                
-                # Hack bucket, record state length for each uttr, get longest label seq for decode step
-                assert len(x.shape)==4,'Bucketing should cause acoustic feature to have shape 1xBxTxD'
-                assert len(y.shape)==3,'Bucketing should cause label have to shape 1xBxT'
-                x = x.squeeze(0).to(device = self.device,dtype=torch.float32)
-                y = y.squeeze(0).to(device = self.device,dtype=torch.long)
-                state_len = np.sum(np.sum(x.cpu().data.numpy(),axis=-1)!=0,axis=-1)
-                state_len = [int(sl) for sl in state_len]
-                ans_len = int(torch.max(torch.sum(y!=0,dim=-1)))
 
-                # ASR forwarding 
-                self.asr_opt.zero_grad()
-                ctc_pred, state_len, att_pred, _ =  self.asr_model(x, ans_len,tf_rate=tf_rate,teacher=y,state_len=state_len)
-
-                # Calculate loss function
+                # Init
                 loss_log = {}
-                label = y[:,1:ans_len+1].contiguous()
-                ctc_loss = 0
-                att_loss = 0
+                ctc_loss,att_loss = 0,0
+                tf_rate = self.tf_start - self.step*(self.tf_start-self.tf_end)/self.max_step
+
+                # Fetch data
+                x,y,state_len,ans_len,label = self.fetch_data(x,y)
+
+                # ASR forwarding
+                self.asr_opt.zero_grad()
+                ctc_pred, state_len, att_pred, _ =  self.asr_model(x, ans_len,tf_rate=tf_rate,teacher=y,state_len=state_len)                
                 
                 # CE loss on attention decoder
-                if self.ctc_weight<1:
+                if self.enable_att:
                     b,t,c = att_pred.shape
                     att_loss = self.seq_loss(att_pred.view(b*t,c),label.view(-1))
                     att_loss = torch.sum(att_loss.view(b,t),dim=-1)/torch.sum(y!=0,dim=-1)\
@@ -155,25 +165,26 @@ class Trainer(Solver):
                     loss_log['train_att'] = att_loss
 
                 # CTC loss on CTC decoder
-                if self.ctc_weight>0:
+                if self.enable_ctc:
                     target_len = torch.sum(y!=0,dim=-1)
                     ctc_loss = self.ctc_loss( F.log_softmax( ctc_pred.transpose(0,1),dim=-1), label, torch.LongTensor(state_len), target_len)
                     loss_log['train_ctc'] = ctc_loss
                 
+                # Combine CTC/attention loss
                 asr_loss = (1-self.ctc_weight)*att_loss+self.ctc_weight*ctc_loss
                 loss_log['train_full'] = asr_loss
                 
                 # Adversarial loss from CLM
                 if self.apply_clm and att_pred.shape[1]>=CLM_MIN_SEQ_LEN:
                     if (self.step%self.clm.update_freq)==0:
-                        # update CLM once in a while
+                        # update CLM every N steps
                         clm_log,gp = self.clm.train(att_pred.detach(),CLM_MIN_SEQ_LEN)
                         self.write_log('clm_score',clm_log)
                         self.write_log('clm_gp',gp)
                     adv_feedback = self.clm.compute_loss(F.softmax(att_pred))
                     asr_loss -= adv_feedback
 
-                # Backprop
+                # Check grad. norm and backprop
                 asr_loss.backward()
                 grad_norm = torch.nn.utils.clip_grad_norm_(self.asr_model.parameters(), GRAD_CLIP)
                 if math.isnan(grad_norm):
@@ -183,17 +194,23 @@ class Trainer(Solver):
                 
                 # Logger
                 self.write_log('loss',loss_log)
-                if self.ctc_weight<1:
+                if self.enable_att:
+                    # Frame-wise accuraccy (for reference only) 
                     self.write_log('acc',{'train':cal_acc(att_pred,label)})
                 if self.step % TRAIN_WER_STEP ==0:
+                    # token error rate is calculated during training (for reference only)  
+                    tr_ter = cal_cer(att_pred,label,mapper=self.mapper)
                     self.write_log('error rate',
-                                   {'train':cal_cer(att_pred,label,mapper=self.mapper)})
+                                   {'train':tr_ter})
+                self.progress('Training status | Loss - {:.4f} | Grad. Norm - {:.4f} | Token Error Rate - {:.4f}'\
+                    .format(loss_log['train_full'].item(),grad_norm,tr_ter))
 
                 # Validation
                 if self.step%self.valid_step == 0:
                     self.asr_opt.zero_grad()
                     self.valid()
 
+                # End of step
                 self.step+=1
                 if self.step > self.max_step:break
     
@@ -213,80 +230,91 @@ class Trainer(Solver):
         self.asr_model.eval()
         
         # Init stats
-        val_loss, val_ctc, val_att, val_acc, val_cer = 0.0, 0.0, 0.0, 0.0, 0.0
-        val_len = 0    
-        all_pred,all_true = [],[]
+        val_loss, val_ctc_loss, val_att_loss, val_acc, val_att_er,val_ctc_er = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        val_cnt = 0
+        full_att_pred,full_ctc_pred,full_truth = [],[],[]
         
         # Perform validation
         for cur_b,(x,y) in enumerate(self.dev_set):
-            self.progress(' '.join(['Valid step -',str(self.step),'(',str(cur_b),'/',str(len(self.dev_set)),')']))
+            self.progress(' '.join(['Valid step -',str(cur_b),'/',str(len(self.dev_set))]))
 
-            # Prepare data
-            if len(x.shape)==4: x = x.squeeze(0)
-            if len(y.shape)==3: y = y.squeeze(0)
-            x = x.to(device = self.device,dtype=torch.float32)
-            y = y.to(device = self.device,dtype=torch.long)
-            state_len = torch.sum(torch.sum(x.cpu(),dim=-1)!=0,dim=-1)
-            state_len = [int(sl) for sl in state_len]
-            ans_len = int(torch.max(torch.sum(y!=0,dim=-1)))
+            # Fetch data
+            x,y,state_len,ans_len,label = self.fetch_data(x,y)
+            batch_size = int(x.shape[0])
             
             # Forward
             ctc_pred, state_len, att_pred, att_maps = self.asr_model(x, ans_len+VAL_STEP,state_len=state_len)
 
             # Compute attention loss & get decoding results
-            label = y[:,1:ans_len+1].contiguous()
-            if self.ctc_weight<1:
+            if self.enable_att:
                 seq_loss = self.seq_loss(att_pred[:,:ans_len,:].contiguous().view(-1,att_pred.shape[-1]),label.view(-1))
                 seq_loss = torch.sum(seq_loss.view(x.shape[0],-1),dim=-1)/torch.sum(y!=0,dim=-1)\
                            .to(device = self.device,dtype=torch.float32) # Sum each uttr and devide by length
                 seq_loss = torch.mean(seq_loss) # Mean by batch
-                val_att += seq_loss.detach()*int(x.shape[0])
-                t1,t2 = cal_cer(att_pred,label,mapper=self.mapper,get_sentence=True)
-                all_pred += t1
-                all_true += t2
-                val_acc += cal_acc(att_pred,label)*int(x.shape[0])
-                val_cer += cal_cer(att_pred,label,mapper=self.mapper)*int(x.shape[0])
+                val_att_loss += seq_loss.detach().cpu()*batch_size
+                pred,truth = cal_cer(att_pred,label,mapper=self.mapper,get_sentence=True)
+                full_att_pred += pred
+                full_truth += truth
+                val_acc += cal_acc(att_pred,label)*batch_size
+                val_att_er += cal_cer(att_pred,label,mapper=self.mapper)*batch_size
             
-            # Compute CTC loss
-            if self.ctc_weight>0:
+            # Compute CTC loss & get decoding results
+            if self.enable_ctc:
                 target_len = torch.sum(y!=0,dim=-1)
                 ctc_loss = self.ctc_loss( F.log_softmax( ctc_pred.transpose(0,1),dim=-1), label, 
                                          torch.LongTensor(state_len), target_len)
-                val_ctc += ctc_loss.detach()*int(x.shape[0])
+                val_ctc_loss += ctc_loss.detach().cpu()*batch_size
+                pred,truth = cal_cer(ctc_pred,label,mapper=self.mapper,get_sentence=True)
+                full_ctc_pred += pred
+                if not self.enable_att:
+                    full_truth += truth
+                val_ctc_er += cal_cer(ctc_pred,label,mapper=self.mapper)*batch_size
 
-            val_len += int(x.shape[0])
+            val_cnt += batch_size
         
         # Logger
-        val_loss = (1-self.ctc_weight)*val_att + self.ctc_weight*val_ctc
+        val_loss = (1-self.ctc_weight)*val_att_loss + self.ctc_weight*val_ctc_loss
         loss_log = {}
-        for k,v in zip(['dev_full','dev_ctc','dev_att'],[val_loss, val_ctc, val_att]):
-            if v > 0.0: loss_log[k] = v/val_len
+        for k,v in zip(['dev_full','dev_ctc','dev_att'],[val_loss, val_ctc_loss, val_att_loss]):
+            if v > 0.0:
+                loss_log[k] = v/val_cnt
         self.write_log('loss',loss_log)
  
-        if self.ctc_weight<1:
+        if self.enable_att:
             # Plot attention map to log
             val_hyp,val_txt = cal_cer(att_pred,label,mapper=self.mapper,get_sentence=True)
             val_attmap = draw_att(att_maps,att_pred)
 
             # Record loss
-            self.write_log('error rate',{'dev':val_cer/val_len})
-            self.write_log('acc',{'dev':val_acc/val_len})
+            self.write_log('error rate',{'dev_att':val_att_er/val_cnt})
+            self.write_log('acc',{'dev':val_acc/val_cnt})
             for idx,attmap in enumerate(val_attmap):
                 self.write_log('att_'+str(idx),attmap)
                 self.write_log('hyp_'+str(idx),val_hyp[idx])
                 self.write_log('txt_'+str(idx),val_txt[idx])
 
             # Save model by val er.
-            if val_cer/val_len  < self.best_val_ed:
-                self.best_val_ed = val_cer/val_len
-                self.verbose('Best val er       : {:.4f}       @ step {}'.format(self.best_val_ed,self.step))
+            if val_att_er/val_cnt  < self.best_val_ed:
+                self.best_val_ed = val_att_er/val_cnt
+                self.verbose('Best val error rate  : {:.4f}       @ step {} {}'.format(self.best_val_ed,self.step,' '*20))
                 torch.save(self.asr_model, os.path.join(self.ckpdir,'asr'))
                 if self.apply_clm:
                     torch.save(self.clm.clm,  os.path.join(self.ckpdir,'clm'))
                 # Save hyps.
                 with open(os.path.join(self.ckpdir,'best_hyp.txt'),'w') as f:
-                    for t1,t2 in zip(all_pred,all_true):
-                        f.write(t1+','+t2+'\n')
+                    for pred,truth in zip(full_att_pred,full_truth):
+                        f.write(pred+','+truth+'\n')
+        
+        if self.enable_ctc:
+            self.write_log('error rate',{'dev_ctc':val_ctc_er/val_cnt})
+            if not self.enable_att and (val_ctc_er/val_cnt  < self.best_val_ed):
+                self.best_val_ed = val_ctc_er/val_cnt
+                self.verbose('Best val error rate  : {:.4f}       @ step {} {}'.format(self.best_val_ed,self.step,' '*20))
+                torch.save(self.asr_model, os.path.join(self.ckpdir,'asr'))
+                # Save hyps.
+                with open(os.path.join(self.ckpdir,'best_hyp.txt'),'w') as f:
+                    for pred,truth in zip(full_ctc_pred,full_truth):
+                        f.write(pred+','+truth+'\n')
 
         self.asr_model.train()
 
@@ -312,17 +340,27 @@ class Tester(Solver):
         ''' Load saved ASR'''
         self.verbose('Load ASR model from '+os.path.join(self.ckpdir))
         self.asr_model = torch.load(os.path.join(self.ckpdir,'asr'))
-        
-        # Enable joint CTC decoding
-        self.asr_model.joint_ctc = self.config['solver']['decode_ctc_weight'] >0
-        if self.config['solver']['decode_ctc_weight'] >0:
+
+        # Decide decoding mode
+        if not self.asr_model.joint_att or (self.config['solver']['decode_ctc_weight']==1):
             assert self.asr_model.joint_ctc, "The ASR was not trained with CTC"
-            self.verbose('Joint CTC decoding is enabled with weight = '+str(self.config['solver']['decode_ctc_weight']))
-            self.decode_file += '_ctc{:}'.format(self.config['solver']['decode_ctc_weight'])
-            self.asr_model.ctc_weight = self.config['solver']['decode_ctc_weight']
-            
+            self.decode_mode = 'ctc'
+            self.decode_file = "_".join(['decode','ctc'])
+        else:
+            self.decode_mode = 'attention'
+
+        # Enable joint CTC decoding if needed
+        if self.decode_mode == 'attention':
+            self.asr_model.clear_att()
+            if self.config['solver']['decode_ctc_weight'] >0:
+                assert self.asr_model.joint_ctc, "The ASR was not trained with CTC"
+                self.decode_mode = 'hybrid'
+                self.verbose('Joint CTC decoding is enabled with weight = '+str(self.config['solver']['decode_ctc_weight']))
+                self.decode_file += '_ctc{:}'.format(self.config['solver']['decode_ctc_weight'])
+                self.asr_model.ctc_weight = self.config['solver']['decode_ctc_weight']
+                
         # Enable joint RNNLM decoding
-        self.decode_lm = self.config['solver']['decode_lm_weight'] >0
+        self.decode_lm = (self.config['solver']['decode_lm_weight']>0) and (self.decode_mode != 'ctc')
         setattr(self.asr_model,'decode_lm_weight',self.config['solver']['decode_lm_weight'])
         if self.decode_lm:
             assert os.path.exists(self.config['solver']['decode_lm_path']), 'Please specify RNNLM path.'
@@ -331,9 +369,9 @@ class Tester(Solver):
             self.verbose('Loading RNNLM from '+self.config['solver']['decode_lm_path'])
             self.decode_file += '_lm{:}'.format(self.config['solver']['decode_lm_weight'])
         
+
         # Check models dev performance before inference
         self.asr_model.eval()
-        self.asr_model.clear_att()
         self.asr_model = self.asr_model.to(self.device)
         self.verbose('Checking models performance on dev set '+str(self.config['solver']['dev_set'])+'...')
         self.valid()
@@ -346,26 +384,51 @@ class Tester(Solver):
         self.verbose('Start decoding with beam search, beam size = '+str(self.config['solver']['decode_beam_size']))
         self.verbose('Number of utts to decode : {}, decoding with {} threads.'.format(len(self.test_set),self.njobs))
         ## self.test_set = [(x,y) for (x,y) in self.test_set][::10]
-        _ = Parallel(n_jobs=self.njobs)(delayed(self.beam_decode)(x[0],y[0].tolist()[0]) for x,y in tqdm(self.test_set))
         
-        self.verbose('Decode done, best results at {}.'.format(str(os.path.join(self.ckpdir,self.decode_file+'.txt'))))
-        
-        self.verbose('Top {} results at {}.'.format(self.config['solver']['decode_beam_size'],
+        if self.decode_mode == 'ctc':
+            # Greedy decode for CTC system
+            for x,y in tqdm(self.test_set):
+                self.ctc_decode(x,y)
+            self.verbose('Decode done, results at {}.'.format(str(os.path.join(self.ckpdir,self.decode_file+'.txt'))))
+        else:
+            # Beam decode for attention/hybrid systems
+            _ = Parallel(n_jobs=self.njobs)(delayed(self.beam_decode)(x[0],y[0].tolist()[0]) for x,y in tqdm(self.test_set))
+            self.verbose('Decode done, best results at {}.'.format(str(os.path.join(self.ckpdir,self.decode_file+'.txt'))))
+            self.verbose('Top {} results at {}.'.format(self.config['solver']['decode_beam_size'],
                                                     str(os.path.join(self.ckpdir,self.decode_file+'_nbest.txt'))))
         
     def write_hyp(self,hyps,y):
         '''Record decoding results'''
-        gt = self.mapper.translate(y,return_string=True)
-        # Best
-        with open(os.path.join(self.ckpdir,self.decode_file+'.txt'),'a') as f:
-            best_hyp = self.mapper.translate(hyps[0].outIndex,return_string=True)
-            f.write(gt+'\t'+best_hyp+'\n')
-        # N best
-        with open(os.path.join(self.ckpdir,self.decode_file+'_nbest.txt'),'a') as f:
-            for hyp in hyps:
-                best_hyp = self.mapper.translate(hyp.outIndex,return_string=True)
+
+        if self.decode_mode == 'ctc':
+            # CTC decode performed batch-wised
+            with open(os.path.join(self.ckpdir,self.decode_file+'.txt'),'a') as f:
+                for gt,pd in zip(y,hyps):
+                    gt = self.mapper.translate(gt,return_string=True)
+                    pd = self.mapper.translate(pd,return_string=True)
+                    f.write(gt+'\t'+pd+'\n')
+        else:
+            gt = self.mapper.translate(y,return_string=True)
+            # Best
+            with open(os.path.join(self.ckpdir,self.decode_file+'.txt'),'a') as f:
+                best_hyp = self.mapper.translate(hyps[0].outIndex,return_string=True)
                 f.write(gt+'\t'+best_hyp+'\n')
+            # N best
+            with open(os.path.join(self.ckpdir,self.decode_file+'_nbest.txt'),'a') as f:
+                for hyp in hyps:
+                    best_hyp = self.mapper.translate(hyp.outIndex,return_string=True)
+                    f.write(gt+'\t'+best_hyp+'\n')
         
+    def ctc_decode(self,x,y):
+        '''Perform batch-wise CTC decoding'''
+        # Fetch data
+        x,y,state_len,ans_len,label = self.fetch_data(x,y)
+
+        # Forward
+        with torch.no_grad():
+            ctc_pred, _, _, _ = self.asr_model(x, ans_len,state_len=state_len)
+
+        self.write_hyp(ctc_pred,y)
 
     def beam_decode(self,x,y):
         '''Perform beam decoding with end-to-end ASR'''
@@ -389,55 +452,52 @@ class Tester(Solver):
     
     def valid(self):
         '''Perform validation step (!!!NOTE!!! greedy decoding on Attention decoder only)'''
-        val_cer = 0.0
-        val_len = 0    
-        all_pred,all_true = [],[]
+        val_att_er,val_ctc_er = 0.0,0.0
+        val_cnt = 0    
+        full_att_pred,full_ctc_pred,full_truth = [],[],[]
         ctc_results = []
         with torch.no_grad():
             for cur_b,(x,y) in enumerate(self.dev_set):
                 self.progress(' '.join(['Valid step - (',str(cur_b),'/',str(len(self.dev_set)),')']))
 
-                # Prepare data
-                if len(x.shape)==4: x = x.squeeze(0)
-                if len(y.shape)==3: y = y.squeeze(0)
-                x = x.to(device = self.device,dtype=torch.float32)
-                y = y.to(device = self.device,dtype=torch.long)
-                state_len = torch.sum(torch.sum(x.cpu(),dim=-1)!=0,dim=-1)
-                state_len = [int(sl) for sl in state_len]
-                ans_len = int(torch.max(torch.sum(y!=0,dim=-1)))
+                # Fetch data
+                x,y,state_len,ans_len,label = self.fetch_data(x,y)
 
                 # Forward
                 ctc_pred, state_len, att_pred, att_maps = self.asr_model(x, ans_len+VAL_STEP,state_len=state_len)
-                ctc_pred = torch.argmax(ctc_pred,dim=-1).cpu() if ctc_pred is not None else None
-                ctc_results.append(ctc_pred)
+                
+                # Attention result
+                if self.decode_mode in ['attention','hybrid']:
+                    pred,truth = cal_cer(att_pred,label,mapper=self.mapper,get_sentence=True)
+                    full_att_pred += pred
+                    full_truth += truth
+                    val_att_er += cal_cer(att_pred,label,mapper=self.mapper)*int(x.shape[0])
 
-                # Result
-                label = y[:,1:ans_len+1].contiguous()
-                t1,t2 = cal_cer(att_pred,label,mapper=self.mapper,get_sentence=True)
-                all_pred += t1
-                all_true += t2
-                val_cer += cal_cer(att_pred,label,mapper=self.mapper)*int(x.shape[0])
-                val_len += int(x.shape[0])
+                # CTC result
+                if self.decode_mode in ['ctc','hybrid']:
+                    pred,truth = cal_cer(ctc_pred,label,mapper=self.mapper,get_sentence=True)
+                    full_ctc_pred += pred
+                    if self.decode_mode == 'ctc':
+                        full_truth += truth
+                    val_ctc_er += cal_cer(ctc_pred,label,mapper=self.mapper)*int(x.shape[0])
+                                
+                val_cnt += int(x.shape[0])
         
         
-        # Dump model score to ensure model is corrected
-        self.verbose('Validation Error Rate of Current model : {:.4f}      '.format(val_cer/val_len)) 
-        self.verbose('See {} for validation results.'.format(os.path.join(self.ckpdir,'dev_att_decode.txt'))) 
-        with open(os.path.join(self.ckpdir,'dev_att_decode.txt'),'w') as f:
-            for hyp,gt in zip(all_pred,all_true):
-                f.write(gt.lstrip()+'\t'+hyp.lstrip()+'\n')
+        # Dump att model score to ensure model is corrected
+        if self.decode_mode in ['attention','hybrid']:
+            self.verbose('Validation Error Rate of attention decoder : {:.4f}      '.format(val_att_er/val_cnt)) 
+            self.verbose('See {} for results.'.format(os.path.join(self.ckpdir,'dev_att_decode.txt'))) 
+            with open(os.path.join(self.ckpdir,'dev_att_decode.txt'),'w') as f:
+                for hyp,gt in zip(full_att_pred,full_truth):
+                    f.write(gt.lstrip()+'\t'+hyp.lstrip()+'\n')
         
-        # Also dump CTC result if available
-        if ctc_results[0] is not None:
-            ctc_results = [i for ins in ctc_results for i in ins]
-            ctc_text = []
-            for pred in ctc_results:
-                p = [i for i in pred.tolist() if i != 0]
-                p = [k for k, g in itertools.groupby(p)]
-                ctc_text.append(self.mapper.translate(p,return_string=True))
-            self.verbose('Also, see {} for CTC validation results.'.format(os.path.join(self.ckpdir,'dev_ctc_decode.txt'))) 
+        # Dump ctc model score to ensure model is corrected
+        if self.decode_mode in ['ctc','hybrid']:
+            self.verbose('Validation Error Rate of CTC decoder : {:.4f}      '.format(val_ctc_er/val_cnt))
+            self.verbose('See {} for results.'.format(os.path.join(self.ckpdir,'dev_ctc_decode.txt'))) 
             with open(os.path.join(self.ckpdir,'dev_ctc_decode.txt'),'w') as f:
-                for hyp,gt in zip(ctc_text,all_true):
+                for hyp,gt in zip(ctc_text,full_truth):
                     f.write(gt.lstrip()+'\t'+hyp.lstrip()+'\n')
 
 
@@ -515,7 +575,7 @@ class RNNLM_Trainer(Solver):
         dev_size = 0 
 
         for cur_b,y in enumerate(self.dev_set):
-            self.progress(' '.join(['Valid step -',str(self.step),'(',str(cur_b),'/',str(len(self.dev_set)),')']))
+            self.progress(' '.join(['Valid step -',str(cur_b),'/',str(len(self.dev_set))]))
             if len(y.shape)==3: y = y.squeeze(0)
             y = y.to(device = self.device,dtype=torch.long)
             ans_len = torch.sum(y!=0,dim=-1)

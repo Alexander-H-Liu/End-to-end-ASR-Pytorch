@@ -171,7 +171,17 @@ def collapse_phn(seq):
 def trim_eos(seqence):
     new_pred = []
     for char in seqence:
-        new_pred.append(int(char))
+        if char != 0 :
+            new_pred.append(int(char))
         if char == 1:
             break
     return new_pred
+
+# Reference : https://stackoverflow.com/questions/579310/formatting-long-numbers-as-strings-in-python
+def human_format(num):
+    magnitude = 0
+    while num >= 1000:
+        magnitude += 1
+        num /= 1000.0
+    # add more suffixes if you need them
+    return '{:3}{}'.format(num, [' ', 'K', 'M', 'G', 'T', 'P'][magnitude])

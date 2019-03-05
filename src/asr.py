@@ -1,13 +1,12 @@
 import os
+import math
 import torch 
 import random
+import numpy as np
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence,pad_packed_sequence
 import torch.nn.functional as F
 from torch.distributions.categorical import Categorical
-
-import numpy as np
-import math
 
 from src.postprocess import Hypothesis
 from src.ctc import CTCPrefixScore
@@ -84,6 +83,7 @@ class Seq2Seq(nn.Module):
             for t in range(decode_step):
                 # Attend (inputs current state of first layer, encoded features)
                 attention_score,context = self.attention(self.decoder.state_list[0],encode_feature,encode_len)
+                
                 # Spell (inputs context + embedded last character)                
                 decoder_input = torch.cat([last_char,context],dim=-1)
                 dec_out = self.decoder(decoder_input)
@@ -91,7 +91,7 @@ class Seq2Seq(nn.Module):
                 # To char
                 cur_char = self.char_trans(dec_out)
 
-                # Teacher forcing
+                # Teacher forcing or self-sampling next char
                 if (teacher is not None):
                     if random.random() <= tf_rate:
                         last_char = teacher[:,t+1,:]
@@ -101,11 +101,12 @@ class Seq2Seq(nn.Module):
                 else:
                     last_char = self.embed(torch.argmax(cur_char,dim=-1))
 
-
+                # Append prediction
                 output_char_seq.append(cur_char)
                 for head,a in enumerate(attention_score):
                     output_att_seq[head].append(a.cpu())
 
+            # Stack output to sequence
             att_output = torch.stack(output_char_seq,dim=1)
             att_maps = [torch.stack(att,dim=1) for att in output_att_seq]
 
