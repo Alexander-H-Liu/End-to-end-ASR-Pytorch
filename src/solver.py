@@ -600,6 +600,7 @@ class RNNLM_Tester(Solver):
     ''' Tester for RNN-LM only'''
     def __init__(self, config, paras):
         super(RNNLM_Tester, self).__init__(config,paras)
+        self.step = 0
 
     def load_data(self):
         ''' Load testing set'''
@@ -629,6 +630,7 @@ class RNNLM_Tester(Solver):
                 loss = F.cross_entropy(prob.view(-1,prob.shape[-1]), y[:,1:].contiguous().view(-1), ignore_index=0)
                 print_loss += loss.clone().detach() * y.shape[0]
                 dev_size += y.shape[0]
+                self.step += 1
 
         print_loss /= dev_size
         dev_ppx = torch.exp(print_loss).cpu().item()

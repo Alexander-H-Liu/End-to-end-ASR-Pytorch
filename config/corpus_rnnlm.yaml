@@ -28,5 +28,5 @@ solver:
   dev_metric: 'dev_loss'
   # Misc
   max_timestep: 0
-  test_set: ['']
+  test_set: ['lm_corpus_valid']
   decode_beam_size: 1 
