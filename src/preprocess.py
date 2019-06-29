@@ -72,6 +72,7 @@ def encode_target(input_list,table=None,mode='subword',max_idx=500):
                     table[t] += 1
         ### Step 2. Top k list for encode map
         max_idx = min(max_idx-3,len(table))
+        print('Origin vocabulary size: ', len(table))
         all_tokens = [k for k,v in sorted(table.items(), key = itemgetter(1), reverse = True)][:max_idx]
         table = {'<sos>':0,'<eos>':1}
         if mode == "word": table['<unk>']=2

@@ -39,11 +39,16 @@ def read_text(file,target):
             for line in fp:
                 if idx == line.split(' ')[0]:
                     return [c for c in line[:-1].split(' ',1)[1]]
-    elif target =='subword':
+    elif target == 'subword':
         with open(src_file,'r') as fp:
             for line in fp:
                 if idx == line.split(' ')[0]:
                     return line[:-1].split(' ',1)[1]
+    elif target == 'word':
+        with open(src_file,'r') as fp:
+            for line in fp:
+                if idx == line.split(' ')[0]:
+                    return line[:-1].split(' ',1)[1].split(' ')
     else:
         raise ValueError('Unsupported target: '+target)
 

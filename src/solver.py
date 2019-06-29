@@ -153,7 +153,7 @@ class Trainer(Solver):
 
                 # ASR forwarding
                 self.asr_opt.zero_grad()
-                ctc_pred, state_len, att_pred, _ =  self.asr_model(x, ans_len,tf_rate=tf_rate,teacher=y,state_len=state_len)                
+                ctc_pred, state_len, att_pred, _ = self.asr_model(x, ans_len,tf_rate=tf_rate,teacher=y,state_len=state_len)                
                 
                 # CE loss on attention decoder
                 if self.enable_att:
@@ -198,10 +198,11 @@ class Trainer(Solver):
                     # Frame-wise accuraccy (for reference only) 
                     self.write_log('acc',{'train':cal_acc(att_pred,label)})
                 if self.step % TRAIN_WER_STEP ==0:
-                    # token error rate is calculated during training (for reference only)  
-                    tr_ter = cal_cer(att_pred,label,mapper=self.mapper)
-                    self.write_log('error rate',
-                                   {'train':tr_ter})
+                    if self.enable_att:
+                        # token error rate is calculated during training (for reference only)  
+                        tr_ter = cal_cer(att_pred,label,mapper=self.mapper)
+                        self.write_log('error rate',
+                                       {'train':tr_ter})
                 self.progress('Training status | Loss - {:.4f} | Grad. Norm - {:.4f} | Token Error Rate - {:.4f}'\
                     .format(loss_log['train_full'].item(),grad_norm,tr_ter))
 
