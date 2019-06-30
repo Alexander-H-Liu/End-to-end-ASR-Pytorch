@@ -113,10 +113,6 @@ class Trainer(Solver):
         self.enable_ctc = self.ctc_weight > 0
         self.enable_att = self.ctc_weight < 1
         
-        # TODO: load pre-trained model
-        if self.paras.load:
-            raise NotImplementedError
-            
         # Setup optimizer
         if self.apex and self.config['asr_model']['optimizer']['type']=='Adam':
             import apex
@@ -135,6 +131,10 @@ class Trainer(Solver):
             self.verbose('CLM is enabled with text-only source: '+str(clm_data_config['train_set']))
             self.verbose('Extra text set total '+str(len(self.clm.train_set))+' batches.')
 
+        # TODO: data checkpoint
+        if self.paras.load:
+            self.load_checkpoint(self.paras.load)
+            
     def exec(self):
         ''' Training End-to-end ASR system'''
         self.verbose('Training set total '+str(len(self.train_set))+' batches.')
@@ -225,6 +225,24 @@ class Trainer(Solver):
         else:
             self.log.add_scalars(val_name,val_dict,self.step)
 
+    def save_checkpoint(self):
+        state = {'best_val': self.best_val_ed,
+                 'step':self.step,
+                 'opt': self.asr_opt,
+                 'asr': self.asr_model}
+        if self.apply_clm:
+            state['clm'] = self.clm
+        torch.save(state, os.path.join(self.ckpdir,'checkpoint'))
+
+    def load_checkpoint(self, ckp_path):
+        state = torch.load(ckp_path)
+        self.best_val_ed = state['best_val']
+        self.step = state['step']
+        self.asr_opt = state['opt']
+        self.asr_model = state['asr']
+        self.asr_model.train()
+        if self.apply_clm:
+            self.clm = state['clm']
 
     def valid(self):
         '''Perform validation step (!!!NOTE!!! greedy decoding with Attention decoder only)'''
@@ -317,6 +335,7 @@ class Trainer(Solver):
                     for pred,truth in zip(full_ctc_pred,full_truth):
                         f.write(pred+','+truth+'\n')
 
+        self.save_checkpoint()
         self.asr_model.train()
 
 
