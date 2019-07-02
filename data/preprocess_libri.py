@@ -9,6 +9,7 @@ from tqdm import tqdm
 import pickle
 import numpy as np
 import pandas as pd
+from operator import itemgetter
 
 def boolean_string(s):
     if s not in ['False', 'True']:
@@ -60,6 +61,21 @@ encode_table = None
 output_dir = None
 dim = paras.feature_dim*(1+paras.apply_delta+paras.apply_delta_delta)
 
+# Select dataset
+print('')
+print('Generate Vocabulary for {} unit.'.format(paras.target))
+print('Data sets :')
+for idx,s in enumerate(sets):
+    print('\t',idx,':',s)
+bpe_tr = input('Please enter the index for generating vocabulary (seperate w/ space): ')
+bpe_tr = [sets[int(t)] for t in bpe_tr.split(' ')]
+
+# Collect text
+tr_txt = []
+for s in bpe_tr:
+    todo = list(Path(os.path.join(paras.data_path,s)).rglob("*.flac"))
+    tr_txt += Parallel(n_jobs=paras.n_jobs)(delayed(read_text)(str(file),target=paras.target) for file in todo)
+
 # BPE training
 if paras.target == 'subword':
     # Setup path
@@ -68,24 +84,10 @@ if paras.target == 'subword':
     bpe_dir = os.path.join(output_dir,'bpe')
     if not os.path.exists(bpe_dir):os.makedirs(bpe_dir)
 
-    # Select dataset
-    print('')
-    print('Pretrain BPE for subword unit.')
-    print('Data sets :')
-    for idx,s in enumerate(sets):
-        print('\t',idx,':',s)
-    bpe_tr = input('Please enter the index for training sets for BPE (seperate w/ space): ')
-    bpe_tr = [sets[int(t)] for t in bpe_tr.split(' ')]
-
-    # Collect text
-    tr_txt = []
-    for s in bpe_tr:
-        todo = list(Path(os.path.join(paras.data_path,s)).rglob("*.flac"))
-        tr_txt+=Parallel(n_jobs=paras.n_jobs)(delayed(read_text)(str(file),target=paras.target) for file in todo)
+    # Train BPE
+    print('Start BPE training')
     with open(os.path.join(bpe_dir,'train.txt'),'w') as f:
         for s in tr_txt:f.write(s+'\n')
-
-    # Train BPE
     from subprocess import call
     call(['spm_train',
           '--input='+os.path.join(bpe_dir,'train.txt'),
@@ -115,6 +117,24 @@ if paras.target == 'subword':
             if tok not in ['<s>','</s>']:
                 encode_table[tok] = len(encode_table)
 
+else: 
+    ### Step 1. Calculate wrd frequency
+    encode_table = {'<sos>':1e10, '<eos>':1e10, '<unk>':1e10}
+    for target in tr_txt:
+        for t in target.split(' '):
+            if t not in encode_table:
+                encode_table[t] = 1
+            else:
+                encode_table[t] += 1
+    ### Step 2. Top k list for encode map
+    max_idx = min(paras.n_tokens, len(encode_table))
+    print('Origin vocabulary size: ', len(encode_table))
+    all_tokens = [k for k,v in sorted(encode_table.items(), key=itemgetter(1), reverse=True)][:max_idx]
+    encode_table = {'<sos>':0, '<eos>':1, '<unk>':2}
+    for tok in all_tokens:
+        if tok not in encode_table:
+            encode_table[tok] = len(encode_table)
+
 print('')
 print('Data sets :')
 for idx,s in enumerate(sets):
@@ -137,7 +157,7 @@ for s in tr_set:
             for line in f:tr_y.append(line[:-1].split(' '))
     else:
         tr_y = Parallel(n_jobs=paras.n_jobs)(delayed(read_text)(str(file),target=paras.target) for file in tqdm(todo))
-    tr_y, encode_table = encode_target(tr_y,table=encode_table,mode=paras.target,max_idx=paras.n_tokens)
+    tr_y = encode_target(tr_y, encode_table)
 
     if output_dir is None:
         output_dir = os.path.join(paras.output_path,'_'.join(['libri',str(paras.feature_type)+str(dim),str(paras.target)+str(len(encode_table))]))

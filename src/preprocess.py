@@ -2,7 +2,6 @@
 
 import librosa
 import numpy as np
-from operator import itemgetter
 # NOTE: there are warnings for MFCC extraction due to librosa's issue
 import warnings
 warnings.filterwarnings("ignore")
@@ -55,30 +54,10 @@ def extract_feature(input_file,feature='fbank',dim=40, cmvn=True, delta=False, d
 # Parameters
 #     - input list : list, list of target list
 #     - table      : dict, token-index table for encoding (generate one if it's None)
-#     - mode       : int, encoding mode ( phoneme / char / subword / word )
-#     - max idx    : int, max encoding index (0=<sos>, 1=<eos>, 2=<unk>)
 # Return
 #     - output list: list, list of encoded targets
-#     - output dic : dict, token-index table used during encoding
-def encode_target(input_list,table=None,mode='subword',max_idx=500):
-    if table is None:
-        ### Step 1. Calculate wrd frequency
-        table = {}
-        for target in input_list:
-            for t in target:
-                if t not in table:
-                    table[t] = 1
-                else:
-                    table[t] += 1
-        ### Step 2. Top k list for encode map
-        max_idx = min(max_idx-3,len(table))
-        print('Origin vocabulary size: ', len(table))
-        all_tokens = [k for k,v in sorted(table.items(), key = itemgetter(1), reverse = True)][:max_idx]
-        table = {'<sos>':0,'<eos>':1}
-        if mode == "word": table['<unk>']=2
-        for tok in all_tokens:
-            table[tok] = len(table)
-    ### Step 3. Encode
+def encode_target(input_list, table):
+    ### Encode
     output_list = []
     for target in input_list:
         tmp = [0]
@@ -86,14 +65,10 @@ def encode_target(input_list,table=None,mode='subword',max_idx=500):
             if t in table:
                 tmp.append(table[t])
             else:
-                if mode == "word":
-                    tmp.append(2)
-                else:
-                    tmp.append(table['<unk>'])
-                    # raise ValueError('OOV error: '+t)
+                tmp.append(table['<unk>'])
         tmp.append(1)
         output_list.append(tmp)
-    return output_list,table
+    return output_list
 
 
 # Feature Padding Function 
