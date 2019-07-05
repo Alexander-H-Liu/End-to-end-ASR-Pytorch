@@ -140,7 +140,7 @@ class Trainer(Solver):
         self.verbose('Training set total '+str(len(self.train_set))+' batches.')
         tr_ter = 1.0
 
-        while self.step< self.max_step:
+        while self.step < self.max_step:
             for x,y in self.train_set:
 
                 # Init
@@ -197,7 +197,7 @@ class Trainer(Solver):
                 if self.enable_att:
                     # Frame-wise accuraccy (for reference only) 
                     self.write_log('acc',{'train':cal_acc(att_pred,label)})
-                if self.step % TRAIN_WER_STEP ==0:
+                if self.step % TRAIN_WER_STEP == 0:
                     if self.enable_att:
                         # token error rate is calculated during training (for reference only)  
                         tr_ter = cal_cer(att_pred,label,mapper=self.mapper)
@@ -237,7 +237,7 @@ class Trainer(Solver):
     def load_checkpoint(self, ckp_path):
         state = torch.load(ckp_path)
         self.best_val_ed = state['best_val']
-        self.step = state['step']
+        self.step = state['step'] + 1
         self.asr_opt = state['opt']
         self.asr_model = state['asr']
         self.asr_model.train()
