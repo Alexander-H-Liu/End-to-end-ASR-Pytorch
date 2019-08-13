@@ -19,9 +19,9 @@ class TestAudio(unittest.TestCase):
             "hop_length": 100,
         }
 
-        transform = audio.create_transform(audio_config)
+        transform, d = audio.create_transform(audio_config)
         y = transform(self.filepath)
-        self.assertEqual(list(y.shape), [631, 40])
+        self.assertEqual(list(y.shape), [631, d])
 
     def test_mfcc(self):
         audio_config = {
@@ -32,9 +32,9 @@ class TestAudio(unittest.TestCase):
             "hop_length": 100,
         }
 
-        transform = audio.create_transform(audio_config)
+        transform, d = audio.create_transform(audio_config)
         y = transform(self.filepath)
-        self.assertEqual(list(y.shape), [631, 13])
+        self.assertEqual(list(y.shape), [631, d])
 
     def test_cmvn(self):
         audio_config = {
@@ -45,7 +45,7 @@ class TestAudio(unittest.TestCase):
             "hop_length": 100,
         }
 
-        transform = audio.create_transform(audio_config)
+        transform, d = audio.create_transform(audio_config)
         y = transform(self.filepath)
         np.testing.assert_allclose(y.mean(1), 0.0, rtol=1e-6, atol=1e-6)
         np.testing.assert_allclose(y.std(1), 1.0, rtol=1e-6, atol=1e-6)

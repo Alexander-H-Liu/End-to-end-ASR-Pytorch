@@ -59,4 +59,4 @@ def create_transform(audio_config):
 
     transforms.append(Postprocess())
 
-    return nn.Sequential(*transforms)
+    return nn.Sequential(*transforms), feat_dim
