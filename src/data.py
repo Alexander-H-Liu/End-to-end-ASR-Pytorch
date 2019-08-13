@@ -1,4 +1,4 @@
-from src.text import create_tokenizer
+from src.text import load_text_encoder
 from src.audio import create_transform
 from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
@@ -54,9 +54,9 @@ def load_dataset(n_jobs, use_gpu, corpus, audio, text):
     msg_list = []
 
     # Audio feature extractor
-    audio_transform, feat_dim = create_transform(apply_jit,**audio)
+    audio_transform, feat_dim = create_transform(audio)
     # Text tokenizer
-    tokenizer = create_tokenizer(**text)
+    tokenizer = load_text_encoder(**text)
     # Dataset
     tr_set, dv_set, batch_size, data_msg = create_dataset(tokenizer,audio_transform,**corpus)
     # Dataloader

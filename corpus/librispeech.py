@@ -36,7 +36,7 @@ class LibriDataset(Dataset):
         
         # Read text
         self.text = Parallel(n_jobs=-1)(delayed(read_text)(str(f)) for f in self.file_list)
-        self.text = Parallel(n_jobs=-1)(delayed(tokenizer.tokenize)(txt) for txt in self.text)
+        self.text = Parallel(n_jobs=-1)(delayed(tokenizer.encode)(txt) for txt in self.text)
         
         if bucket_size>1:
             # Read file size and sort dataset by length
@@ -45,22 +45,28 @@ class LibriDataset(Dataset):
             self.text = [txt for _,txt in sorted(zip(file_len,self.text),reverse=True)]
 
     def __getitem__(self,index):
-        # load feature
-        audio_feat = self.transform(self.file_list[index])
-        
         if self.bucket_size>1:
+            # Return a bucket
+            index = min(len(self.file_list)-self.bucket_size,index)
             # Create bucket (half-sized if length >= HALF_BATCHSIZE_TIME)
             max_time = audio_feat.shape[0]
-            audio_feats = [audio_feat]
             bucket_size = self.bucket_size//2 if max_time >= HALF_BATCHSIZE_TIME else self.bucket_size
-            audio_feats += [self.transform(self.file_list[index+t]) for t in range(1,bucket_size)]
-            audio_lens = [feat.shape[0] for feat in audio_feats]
-            token_seqs  = [torch.LongTensor(txt) for txt in self.text[index:index+bucket_size]]
+            audio_feats = [audio_feat]
+            audio_lens = [audio_feat.shape[0]]
+            token_seqs = [torch.LongTensor(self.text[index])]
+            # Fill bucket
+            for t in range(1,bucket_size):
+                feat = self.transform(self.file_list[index+t])
+                audio_feats.append(feat)
+                audio_lens.append(feat.shape[0])
+                token_seqs.append(torch.LongTensor(self.text[index+t]))
             # Zero-padding
             audio_feats = pad_sequence(audio_feats, batch_first=True)
             token_seqs = pad_sequence(token_seqs, batch_first=True)
             return audio_feats, audio_lens, token_seqs
         else:
+            # Return single instance
+            audio_feat = self.transform(self.file_list[index])
             token_seq  = torch.LongTensor(self.text[index])
             return audio_feat, token_seq
 
