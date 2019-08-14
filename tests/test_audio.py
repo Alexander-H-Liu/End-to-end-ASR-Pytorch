@@ -49,3 +49,49 @@ class TestAudio(unittest.TestCase):
         y = transform(self.filepath)
         np.testing.assert_allclose(y.mean(1), 0.0, rtol=1e-6, atol=1e-6)
         np.testing.assert_allclose(y.std(1), 1.0, rtol=1e-6, atol=1e-6)
+
+    def test_delta(self):
+        audio_config = {
+            "feat_type": "fbank",
+            "feat_dim": 40,
+            "apply_cmvn": True,
+            "win_length": 200,
+            "hop_length": 100,
+            "delta_order": 1,
+            "delta_window_size": 2,
+        }
+
+        transform, d = audio.create_transform(audio_config)
+        y = transform(self.filepath)
+
+        self.assertEqual(list(y.shape), [631, 80])
+
+        audio_config = {
+            "feat_type": "fbank",
+            "feat_dim": 40,
+            "apply_cmvn": True,
+            "win_length": 200,
+            "hop_length": 100,
+            "delta_order": 0,
+        }
+
+        transform, d = audio.create_transform(audio_config)
+        y_no_delta = transform(self.filepath)
+
+        np.testing.assert_allclose(y[:, :40], y_no_delta, rtol=1e-6, atol=1e-6)
+
+    def test_delta_delta(self):
+        audio_config = {
+            "feat_type": "fbank",
+            "feat_dim": 40,
+            "apply_cmvn": True,
+            "win_length": 200,
+            "hop_length": 100,
+            "delta_order": 2,
+            "delta_window_size": 2,
+        }
+
+        transform, d = audio.create_transform(audio_config)
+        y = transform(self.filepath)
+
+        self.assertEqual(list(y.shape), [631, 120])
