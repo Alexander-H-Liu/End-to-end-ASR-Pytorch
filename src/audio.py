@@ -31,7 +31,7 @@ class CMVN(nn.Module):
 
 class Delta(nn.Module):
 
-    __constants__ = ["order", "window_size"]
+    __constants__ = ["order", "window_size", "padding"]
 
     def __init__(self, order=1, window_size=2):
         # Reference:
