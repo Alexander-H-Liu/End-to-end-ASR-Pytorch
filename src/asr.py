@@ -4,6 +4,7 @@ import random
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.distributions.categorical import Categorical
 from torch.nn.utils.rnn import pack_padded_sequence,pad_packed_sequence
 
 from src.util import init_weights 
@@ -15,9 +16,10 @@ class ASR(nn.Module):
         super(ASR, self).__init__()
 
         # Setup
+        assert 0<=ctc_weight<=1
         self.ctc_weight = ctc_weight
         self.enable_ctc = ctc_weight > 0
-        self.enable_att = ctc_weight != 0
+        self.enable_att = ctc_weight != 1
         self.lm = None
 
         # Modules
@@ -28,26 +30,23 @@ class ASR(nn.Module):
             self.dec_dim = decoder['dim']
             self.pre_embed = nn.Embedding(vocab_size, self.dec_dim)
             self.decoder = Decoder(self.encoder.out_dim+self.dec_dim, vocab_size, **decoder)
-            self.attnetion = Attention(self.encoder.out_dim, self.dec_dim, **model_para['attention'])
+            self.attention = Attention(self.encoder.out_dim, self.dec_dim, **attention)
 
         self.apply(init_weights)
 
     def load_lm(self):
         pass #ToDo
 
-    def clear_att(self):
-        self.attention.reset_enc_mem()
-
     def create_msg(self):
         # Messages for user
         msg = []
+        msg.append('Model spec.| Encoder\'s downsampling rate of time axis is {}.'.format(self.encoder.sample_rate))
         if self.encoder.vgg:
-            msg.append('VCC Extractor w/ time downsampling rate = 4 in encoder enabled.')
-        msg.append('Encoder\'s downsampling rate of time axis is {}.'.format(self.encoder.sample_rate))
+            msg.append('           | VCC Extractor w/ time downsampling rate = 4 in encoder enabled.')
         if self.enable_ctc:
-            msg.append('CTC training on encoder enabled ( lambda = {}).'.format(self.ctc_weight))
+            msg.append('           | CTC training on encoder enabled ( lambda = {}).'.format(self.ctc_weight))
         if self.enable_att:
-            msg.append('{} attention decoder enabled ( lambda = {}).'.format(self.attnetion.mode,1-self.ctc_weight))
+            msg.append('           | {} attention decoder enabled ( lambda = {}).'.format(self.attention.mode,1-self.ctc_weight))
         return msg
 
     def forward(self, audio_feature, feature_len, decode_step,tf_rate=0.0,teacher=None):
@@ -67,8 +66,8 @@ class ASR(nn.Module):
         # Attention based decoding
         if self.enable_att:
             # Init (init char = <SOS>, reset all rnn state and cell)
-            self.decoder.init_rnn(encode_feature)
-            self.attention.reset_enc_mem()
+            self.decoder.init_state(encode_feature)
+            self.attention.reset_mem()
             last_char = self.pre_embed(torch.zeros((bs),dtype=torch.long, device=encode_feature.device))
             output_seq = []
             att_seq = []
@@ -90,7 +89,7 @@ class ASR(nn.Module):
                         # teacher forcing
                         last_char = teacher[:,t,:]
                     else:
-                        # self-sampling
+                        # self-sampling (replace by argmax may be another choice)
                         sampled_char = Categorical(F.softmax(cur_char,dim=-1)).sample()
                         last_char = self.pre_embed(sampled_char)
                 else:
@@ -127,7 +126,7 @@ class Decoder(nn.Module):
             self.enable_cell = True
             self.cell_list = []
         elif module not in ['LSTM','GRU']:
-            raise NotImplementedError, 'Unsupported module type.'
+            raise NotImplementedError
         
         # Modules
         module_list = []
@@ -174,9 +173,9 @@ class Decoder(nn.Module):
 
     def forward(self, x):
         for i, layers in enumerate(self.layers):
-            state = _get_layer_state(i)
+            state = self._get_layer_state(i)
             x = layers(x,state)
-            x = _store_layer_state(i,x)
+            x = self._store_layer_state(i,x)
 
             if self.layer_norm:
                 x = self.ln_list[i](x)
@@ -215,9 +214,9 @@ class Attention(nn.Module):
 
         # Attention
         if self.mode == 'dot':
-            self.att_layer = ScaleDotAttention(temperature)
+            self.att_layer = ScaleDotAttention(temperature, self.num_head)
         elif self.mode == 'loc':
-            self.att_layer = LocationAwareAttention(loc_kernel_size, loc_kernel_num, dim, self.num_head, temperature)
+            self.att_layer = LocationAwareAttention(loc_kernel_size, loc_kernel_num, dim, num_head, temperature)
         else:
             raise NotImplementedError
 
@@ -230,12 +229,11 @@ class Attention(nn.Module):
         self.value = None
         self.mask = None
     
-    def reset_enc_mem(self):
+    def reset_mem(self):
         self.key = None
         self.value = None
         self.mask = None
-        if self.mode == 'loc':
-            self.att_layer.reset_mem()
+        self.att_layer.reset_mem()
 
     def forward(self, dec_state, enc_feat, enc_len):
 
@@ -246,27 +244,23 @@ class Attention(nn.Module):
 
         if self.key is None:
             # Maskout attention score for padded states
-            self.mask = np.zeros((bs,self.num_head,ts))
-            for idx,sl in enumerate(enc_len):
-                self.mask[idx,:,sl:] = 1 # ToDo: more elegant way?
-            self.mask = torch.from_numpy(self.mask).type(torch.ByteTensor).to(dec_state.device).view(-1,ts)# BNxT
-            
+            self.att_layer.compute_mask(enc_len.to(enc_feat.device))
+
             # Store enc state to lower computational cost
             self.key =  torch.tanh(self.proj_k(enc_feat))
             self.value = torch.tanh(self.proj_v(enc_feat))
             if self.num_head>1:
-                self.key = self.key.view(bs,ts,self.num_head,self.dim).transpose(0,2,1,3) # BxNxTxD
-                self.key = self.key.view(bs*self.num_head,ts,self.dim) # BNxTxD
-                self.value = self.value.view(bs,ts,self.num_head,self.v_dim).transpose(0,2,1,3) # BxNxTxD
-                self.value = self.value.view(bs*self.num_head,ts,self.v_dim) # BNxTxD
+                self.key = self.key.view(bs,ts,self.num_head,self.dim).permute(0,2,1,3) # BxNxTxD
+                self.key = self.key.contiguous().view(bs*self.num_head,ts,self.dim) # BNxTxD
+                self.value = self.value.view(bs,ts,self.num_head,self.v_dim).permute(0,2,1,3) # BxNxTxD
+                self.value = self.value.contiguous().view(bs*self.num_head,ts,self.v_dim) # BNxTxD
 
 
         # Calculate attention    
-        context, attn = self.att_layer(query, self.key, self.value, mask=self.mask)
+        context, attn = self.att_layer(query, self.key, self.value)
         if self.num_head>1:
-            context = context.view(bs,self.num_head,ts,self.v_dim)                    # BNxTxD  -> BxNxTxD
-            context = context.transpose(0,2,1,3).view(bs,self.num_head*self.v_dim)    # BxNxTxD -> BxTxND
-            context = self.merge_head(context)
+            context = context.view(bs,self.num_head*self.v_dim)    # BNxD  -> BxND
+            context = self.merge_head(context) # BxD
         
         return attn,context
 
@@ -291,8 +285,9 @@ class Encoder(nn.Module):
         input_dim = input_size
 
         if vgg:
-            module_list.append(VGGExtractor(input_size))
-            input_dim = self.vgg_extractor.out_dim
+            vgg_extractor = VGGExtractor(input_size)
+            module_list.append(vgg_extractor)
+            input_dim = vgg_extractor.out_dim
             self.sample_rate = self.sample_rate*4
 
         if module in ['LSTM','GRU']:

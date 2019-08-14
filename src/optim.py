@@ -2,7 +2,7 @@ import torch
 
 
 class Optimizer():
-    def __init__(self, parameters, tf_start, tf_end, tf_step, optimizer, lr, lr_scheduler, *kwargs):
+    def __init__(self, parameters, tf_start, tf_end, tf_step, optimizer, lr, lr_scheduler, **kwargs):
         
         # Setup teacher forcing scheduler
         self.tf_rate = lambda step: max(tf_end, tf_start-(tf_start-tf_end)*step/tf_step)
@@ -17,6 +17,9 @@ class Optimizer():
         else:
             self.lr_scheduler = None
             self.opt = opt(parameters,lr=lr)
+
+    def get_opt_state_dict(self):
+        return self.opt.state_dict()
 
     def pre_step(self, step):
         self.opt.zero_grad()

@@ -9,7 +9,9 @@ from src.data import load_dataset
 from src.util import Timer, human_format, cal_er
 
 GRAD_CLIP = 5.0
-PROGRESS_STEP = 100
+PROGRESS_STEP = 100      # Std. output refresh freq.
+ADDITIONAL_DEV_STEP = 10 # Additional decode steps for objective validation
+DEV_N_EXAMPLE = 4        # Number of examples (alignment/text) to show in tensorboard
 
 class Solver():
     ''' Super class Solver for all kinds of tasks'''
@@ -42,13 +44,15 @@ class Solver():
     
     def write_log(self,log_name,log_dict):
         '''Write log to TensorBoard'''
-        for k,v in log_dict.items(): 
-            if math.isnan(v) or v is None:
-                del log_dict[k]
-        if len(log_dict)>0:
+        if type(log_dict) is dict:
+            log_dict = {key:val for key, val in log_dict.items() if (val is not None and not math.isnan(val))}
+
+        if log_dict is None:
+            pass
+        elif len(log_dict)>0:
             if 'align' in log_name or 'spec' in log_name:
                 self.log.add_image(log_name,log_dict,self.step)
-            elif 'txt' in log_name or 'hyp' in log_name:
+            elif 'text' in log_name or 'hyp' in log_name:
                 self.log.add_text(log_name, log_dict, self.step)
             else:
                 self.log.add_scalars(log_name,log_dict,self.step)
@@ -62,7 +66,7 @@ class Trainer(Solver):
         # Logger settings
         self.logdir = os.path.join(paras.logdir,self.exp_name)
         self.log = SummaryWriter(self.logdir)
-        self.best_er = 2.0
+        self.best_wer = {'att':2.0,'ctc':2.0}
 
         # Hyperparameters
         self.valid_step = config['hparas']['valid_step']
@@ -78,15 +82,15 @@ class Trainer(Solver):
         feat = feat.to(self.device)
         feat_len = feat_len.to(self.device)
         txt = txt.to(self.device)
-        txt_len = torch.sum(utt_txt!=0,dim=-1)
+        txt_len = torch.sum(txt!=0,dim=-1)
         
         return feat, feat_len, txt, txt_len
 
     def load_data(self):
         ''' Load data for training/validation, store tokenizer and input/output shape'''
-        self.tr_set, self.dv_set, self.feat_dim, self.vocab_size, self.tokenizer, msg = load_dataset(self.config['data'])
+        self.tr_set, self.dv_set, self.feat_dim, self.vocab_size, self.tokenizer, msg = \
+                         load_dataset(self.paras.njobs, self.paras.gpu, **self.config['data'])
         for m in msg: self.verbose(m)
-
 
     def set_model(self):
         ''' Setup ASR model and optimizer '''
@@ -95,8 +99,8 @@ class Trainer(Solver):
         for m in self.asr_model.create_msg(): self.verbose(m)
 
         # Losses
-        self.seq_loss = torch.nn.CrossEntropyLoss(ignore_index=0, reduction='none').to(self.device)
-        self.ctc_loss = torch.nn.CTCLoss(blank=0)
+        self.seq_loss = torch.nn.CrossEntropyLoss(ignore_index=0, reduction='none')
+        self.ctc_loss = torch.nn.CTCLoss(blank=0, zero_infinity=True) # Note: zero_infinity=False is unstable?
 
         # Optimizer
         self.optimizer = Optimizer(self.asr_model.parameters(),**self.config['hparas'])
@@ -110,7 +114,7 @@ class Trainer(Solver):
 
     def exec(self):
         ''' Training End-to-end ASR system '''
-        self.verbose('Total training steps {} ({} steps per epoch).'.format(human_format(self.max_step),len(self.tr_set)))
+        self.verbose('Total training steps {}.'.format(human_format(self.max_step)))
         timer = Timer()
         ctc_loss = None
         att_loss = None
@@ -127,19 +131,25 @@ class Trainer(Solver):
 
                 # Forward model
                 # Note: txt should NOT start w/ <sos>
-                ctc_output, encode_len, att_output, att_salign = \
-                    self.asr_model( feat, feat_len, max(txt_len),tf_rate=0.0,teacher=txt)
+                ctc_output, encode_len, att_output, att_align = \
+                    self.asr_model( feat, feat_len, max(txt_len),tf_rate=tf_rate,teacher=txt)
 
                 # Compute all objectives
                 total_loss = 0
                 if ctc_output is not None:
-                    ctc_loss = self.ctc_loss(ctc_output, txt, encode_len, txt_len)
+                    if self.paras.ctc_backend =='cudnn':
+                        ctc_loss = self.ctc_loss(ctc_output.permute(1,0,2).contiguous(), 
+                                                 txt.to_sparse().values().to(device=self.device,dtype=torch.int32),
+                                                 encode_len.to(device=self.device,dtype=torch.int32),
+                                                 txt_len.to(device=self.device,dtype=torch.int32))
+                    else:
+                        ctc_loss = self.ctc_loss(ctc_output.permute(1,0,2).contiguous(), txt, encode_len, txt_len)
                     total_loss += ctc_loss*self.asr_model.ctc_weight
                 if att_output is not None:
-                    b,t = att_loss.shape
+                    b,t,_ = att_output.shape
                     att_loss = self.seq_loss(att_output.view(b*t,-1),txt.view(-1))
                     # Sum each uttr and devide by length then mean over batch
-                    att_loss = torch.mean(torch.sum(att_loss.view(b,t),dim=-1)/torch.sum(txt!=0,dim=-1))
+                    att_loss = torch.mean(torch.sum(att_loss.view(b,t),dim=-1)/torch.sum(txt!=0,dim=-1).float())
                     total_loss += att_loss*(1-self.asr_model.ctc_weight)
                 timer.cnt('fw')
 
@@ -156,13 +166,13 @@ class Trainer(Solver):
                 if self.step%PROGRESS_STEP==0:
                     self.progress('Tr stat | Loss - {:.2f} | Grad. Norm - {:.2f} | {}'\
                             .format(total_loss.cpu().item(),grad_norm,timer.show()))
-                    self.write_log('ctc_loss',{'tr':ctc_loss.cpu().item()})
-                    self.write_log('att_loss',{'tr':att_loss.cpu().item()})
+                    self.write_log('ctc_loss',{'tr':ctc_loss})
+                    self.write_log('att_loss',{'tr':att_loss})
                     self.write_log('wer',{'tr_att':cal_er(self.tokenizer,att_output,txt),
                                           'tr_ctc':cal_er(self.tokenizer,ctc_output,txt)})
                 # Validation
-                if self.step%self.valid_step == 0:
-                    self.validate()
+                #if self.step%self.valid_step == 0:
+                    #self.validate()
 
                 # End of step
                 self.step+=1
@@ -170,10 +180,50 @@ class Trainer(Solver):
 
     
     def validate(self):
+        # Eval mode
         self.asr_model.eval()
-        # ToDo
+        dev_wer = {'att':[],'ctc':[]}
+
+        for i,data in enumerate(self.dv_set):
+            self.progress('Valid step - {}/{}'.format(i+1,len(self.dv_set)))
+            # Fetch data
+            feat, feat_len, txt, txt_len = self.fetch_data(data)
+
+            # Forward model
+            with torch.no_grad():
+                ctc_output, encode_len, att_output, att_align = \
+                    self.asr_model( feat, feat_len, max(txt_len)+ADDITIONAL_DEV_STEP)
+
+            dev_wer['att'].append(cal_er(self.tokenizer,att_output,txt))
+            dev_wer['ctc'].append(cal_er(self.tokenizer,ctc_output,txt))
+        
+        # Ckpt if performance improves
+        for task in ['att','ctc']:
+            dev_wer[task] = sum(dev_wer[task])/len(dev_wer[task])
+            if dev_wer[task] < self.best_wer[task]:
+                self.best_wer[task] = dev_wer[task]
+                self.save_checkpoint('best_{}.pth'.format(task),dev_wer[task])
+
+        # Show some example of last batch on tensorboard
+        for i in range(min(len(txt),DEV_N_EXAMPLE)):
+            if self.step ==0:
+                self.write_log('true_text{}'.format(i),self.tokenizer.decode(txt[i].tolist()))
+            if att_output is not None:
+                self.write_log('att_align{}'.format(i),att_align[i,0,:,:].cpu().unsqueeze(0))
+                self.write_log('att_text{}'.format(i),self.tokenizer.decode(att_output[i].argmax(dim=-1).tolist()))
+            if ctc_output is not None:
+                self.write_log('ctc_text{}'.format(i),self.tokenizer.decode(ctc_output[i].argmax(dim=-1).tolist()))
+
+        # Resume training
         self.asr_model.train()
 
-    def save_checkpoint(self):
-        pass # ToDo
+    def save_checkpoint(self, f_name, score):
+        ckpt_path = os.path.join(self.ckpdir, f_name)
+        full_dict = {
+            "asr_model": self.asr_model.state_dict(),
+            "optimizer": self.optimizer.get_opt_state_dict(),
+            "global_step": self.step,
+        }
+        torch.save(full_dict, ckpt_path)
+        self.verbose("Saved checkpoint (wer = {:.2f}%) and status @ {}".format(score*100,ckpt_path))
 

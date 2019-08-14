@@ -86,7 +86,7 @@ class ReadAudio(nn.Module):
 
 class Postprocess(nn.Module):
     def forward(self, x):
-        # [channel, feature_dim, time] -> [timem channel, feature_dim]
+        # [channel, feature_dim, time] -> [time, channel, feature_dim]
         x = x.transpose(0, 2).transpose(1, 2)
         # [time, channel, feature_dim] -> [time, feature_dim * channel]
         return x.reshape(x.size(0), -1).detach()
@@ -119,4 +119,4 @@ def create_transform(audio_config):
 
     transforms.append(Postprocess())
 
-    return nn.Sequential(*transforms), feat_dim
+    return nn.Sequential(*transforms), feat_dim * (delta_order + 1)

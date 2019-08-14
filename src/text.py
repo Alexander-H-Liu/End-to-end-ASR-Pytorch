@@ -18,6 +18,10 @@ class _BaseTextEncoder(abc.ABC):
     def vocab_size(self):
         raise NotImplementedError
 
+    @abc.abstractproperty
+    def token_type(self):
+        raise NotImplementedError
+
     @abc.abstractclassmethod
     def load_from_file(cls, vocab_file):
         raise NotImplementedError
@@ -55,9 +59,12 @@ class CharacterTextEncoder(_BaseTextEncoder):
         vocabs = []
         for i in ids:
             v = self.idx_to_vocab(i)
-            if v in ["<pad>", "<eos>"]:
+            if v == "<pad>":
+                continue
+            elif v == "<eos>":
                 break
-            vocabs.append(v)
+            else:
+                vocabs.append(v)
         return "".join(vocabs)
 
     @classmethod
@@ -72,11 +79,16 @@ class CharacterTextEncoder(_BaseTextEncoder):
     def vocab_size(self):
         return len(self._vocab_list)
 
+    @property
+    def token_type(self):
+        return 'character'
+
     def vocab_to_idx(self, vocab):
         return self._vocab2idx.get(vocab, self.unk_idx)
 
     def idx_to_vocab(self, idx):
         return self._vocab_list[idx]
+
 
 
 class SubwordTextEncoder(_BaseTextEncoder):
@@ -109,6 +121,10 @@ class SubwordTextEncoder(_BaseTextEncoder):
     def vocab_size(self):
         return len(self.spm)
 
+    @property
+    def token_type(self):
+        return 'subword'
+
 
 class WordTextEncoder(CharacterTextEncoder):
     def encode(self, s):
@@ -127,6 +143,10 @@ class WordTextEncoder(CharacterTextEncoder):
                 break
             vocabs.append(v)
         return " ".join(vocabs)
+
+    @property
+    def token_type(self):
+        return 'word'
 
 
 def load_text_encoder(mode, vocab_file):
