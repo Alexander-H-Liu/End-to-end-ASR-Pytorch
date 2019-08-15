@@ -7,7 +7,7 @@ class TestChacterTextEncoder(unittest.TestCase):
     def setUp(self):
         super(TestChacterTextEncoder, self).__init__()
         self.vocab_file = "tests/sample_data/character.vocab"
-        self.vocab_list = list(" ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+        self.vocab_list = list(" ABCDEFGHIJKLMNOPQRSTUVWXYZ'")
         self.text = "SPEECH LAB!"
 
     def test_load_from_file(self):
@@ -22,7 +22,7 @@ class TestChacterTextEncoder(unittest.TestCase):
     def _test_encode_decode(self, text_encoder):
         ids = text_encoder.encode(self.text)
 
-        self.assertEqual(30, text_encoder.vocab_size)
+        self.assertEqual(31, text_encoder.vocab_size)
         self.assertEqual(
             ids, [22, 19, 8, 8, 6, 11, 3, 15, 4, 5, 2, 1])
 

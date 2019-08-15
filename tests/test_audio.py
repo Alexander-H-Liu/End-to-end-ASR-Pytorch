@@ -47,6 +47,8 @@ class TestAudio(unittest.TestCase):
 
         transform, d = audio.create_transform(audio_config)
         y = transform(self.filepath)
+
+        self.assertEqual(list(y.shape), [631, d])
         np.testing.assert_allclose(y.mean(1), 0.0, rtol=1e-6, atol=1e-6)
         np.testing.assert_allclose(y.std(1), 1.0, rtol=1e-6, atol=1e-6)
 
@@ -64,7 +66,7 @@ class TestAudio(unittest.TestCase):
         transform, d = audio.create_transform(audio_config)
         y = transform(self.filepath)
 
-        self.assertEqual(list(y.shape), [631, 80])
+        self.assertEqual(list(y.shape), [631, d])
 
         audio_config = {
             "feat_type": "fbank",
@@ -94,4 +96,4 @@ class TestAudio(unittest.TestCase):
         transform, d = audio.create_transform(audio_config)
         y = transform(self.filepath)
 
-        self.assertEqual(list(y.shape), [631, 120])
+        self.assertEqual(list(y.shape), [631, d])
