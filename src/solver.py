@@ -138,12 +138,12 @@ class Trainer(Solver):
                 total_loss = 0
                 if ctc_output is not None:
                     if self.paras.ctc_backend =='cudnn':
-                        ctc_loss = self.ctc_loss(ctc_output.permute(1,0,2).contiguous(), 
+                        ctc_loss = self.ctc_loss(ctc_output.transpose(0,1), 
                                                  txt.to_sparse().values().to(device=self.device,dtype=torch.int32),
                                                  encode_len.to(device=self.device,dtype=torch.int32),
                                                  txt_len.to(device=self.device,dtype=torch.int32))
                     else:
-                        ctc_loss = self.ctc_loss(ctc_output.permute(1,0,2).contiguous(), txt, encode_len, txt_len)
+                        ctc_loss = self.ctc_loss(ctc_output.transpose(0,1), txt, encode_len, txt_len)
                     total_loss += ctc_loss*self.asr_model.ctc_weight
                 if att_output is not None:
                     b,t,_ = att_output.shape
@@ -171,8 +171,8 @@ class Trainer(Solver):
                     self.write_log('wer',{'tr_att':cal_er(self.tokenizer,att_output,txt),
                                           'tr_ctc':cal_er(self.tokenizer,ctc_output,txt)})
                 # Validation
-                #if self.step%self.valid_step == 0:
-                    #self.validate()
+                if self.step%self.valid_step == 0:
+                    self.validate()
 
                 # End of step
                 self.step+=1
