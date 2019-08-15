@@ -20,13 +20,14 @@ parser.add_argument('--seed', default=0, type=int, help='Random seed for reprodu
 parser.add_argument('--ctc-backend', default='torch', type=str, help='CTC backend (torch/cudnn)')
 parser.add_argument('--njobs', default=1, type=int, help='Number of threads for decoding.', required=False)
 parser.add_argument('--cpu', action='store_true', help='Disable GPU training.')
-parser.add_argument('--pin-memory', action='store_true', help='Disable GPU training.')
+parser.add_argument('--no-pin', action='store_true', help='Disable pin-memory for dataloader')
 parser.add_argument('--test', action='store_true', help='Test the model.')
 parser.add_argument('--no-msg', action='store_true', help='Hide all messages.')
-parser.add_argument('--rnnlm', action='store_true', help='Option for training RNNLM.')
+parser.add_argument('--lm', action='store_true', help='Option for training RNNLM.')
 parser.add_argument('--jit', action='store_true', help='Option for enabling jit in pytorch. (feature in development)')
 paras = parser.parse_args()
 setattr(paras,'gpu',not paras.cpu)
+setattr(paras,'pin_memory',not paras.no_pin)
 setattr(paras,'verbose',not paras.no_msg)
 config = yaml.load(open(paras.config,'r'), Loader=yaml.FullLoader)
 
@@ -35,9 +36,9 @@ np.random.seed(paras.seed)
 torch.manual_seed(paras.seed)
 if torch.cuda.is_available(): torch.cuda.manual_seed_all(paras.seed)
 
-if paras.rnnlm:
+if paras.lm:
     # Train RNNLM
-    pass # ToDo
+    from src.solver import LMTrainer as Solver
 else:
     if paras.test:
         # Test ASR

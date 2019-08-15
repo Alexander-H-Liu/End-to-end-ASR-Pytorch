@@ -4,8 +4,9 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from src.asr import ASR
+from src.lm import RNNLM
 from src.optim import Optimizer
-from src.data import load_dataset
+from src.data import load_dataset, load_textset
 from src.util import Timer, human_format, cal_er
 
 GRAD_CLIP = 5.0
@@ -88,8 +89,9 @@ class Trainer(Solver):
 
     def load_data(self):
         ''' Load data for training/validation, store tokenizer and input/output shape'''
+        self.verbose('Loading data, large text file may took a while...')
         self.tr_set, self.dv_set, self.feat_dim, self.vocab_size, self.tokenizer, msg = \
-                         load_dataset(self.paras.njobs, self.paras.gpu, **self.config['data'])
+                         load_dataset(self.paras.njobs, self.paras.gpu, self.paras.pin_memory, **self.config['data'])
         for m in msg: self.verbose(m)
 
     def set_model(self):
@@ -203,6 +205,7 @@ class Trainer(Solver):
             if dev_wer[task] < self.best_wer[task]:
                 self.best_wer[task] = dev_wer[task]
                 self.save_checkpoint('best_{}.pth'.format(task),dev_wer[task])
+            self.write_log('wer',{'dv_'+task:dev_wer[task]})
 
         # Show some example of last batch on tensorboard
         for i in range(min(len(txt),DEV_N_EXAMPLE)):
@@ -226,4 +229,140 @@ class Trainer(Solver):
         }
         torch.save(full_dict, ckpt_path)
         self.verbose("Saved checkpoint (wer = {:.2f}%) and status @ {}".format(score*100,ckpt_path))
+
+
+
+class LMTrainer(Solver):
+    ''' Solver for training language models'''
+    def __init__(self,config,paras):
+        super(LMTrainer, self).__init__(config,paras)
+
+        # Logger settings
+        self.logdir = os.path.join(paras.logdir,self.exp_name)
+        self.log = SummaryWriter(self.logdir)
+        self.best_loss = 10
+
+        # Hyperparameters
+        self.valid_step = config['hparas']['valid_step']
+        self.max_step = config['hparas']['max_step']
+
+        # Init settings
+        self.step = 0
+        
+    def fetch_data(self, data):
+        ''' Move data to device, insert <sos> and compute text seq. length'''
+        txt = torch.cat((torch.zeros((data.shape[0],1),dtype=torch.long),data), dim=1).to(self.device)
+        txt_len = torch.sum(data!=0,dim=-1)+1
+        return txt, txt_len
+
+    def load_data(self):
+        ''' Load data for training/validation, store tokenizer and input/output shape'''
+        self.tr_set, self.dv_set, self.vocab_size, self.tokenizer, msg = \
+                         load_textset(self.paras.njobs, self.paras.gpu, self.paras.pin_memory, **self.config['data'])
+        for m in msg: self.verbose(m)
+
+    def set_model(self):
+        ''' Setup ASR model and optimizer '''
+
+        # Model
+        self.rnnlm = RNNLM( self.vocab_size, **self.config['model']).to(self.device)
+        for m in self.rnnlm.create_msg(): self.verbose(m)
+        # Losses
+        self.seq_loss = torch.nn.CrossEntropyLoss(ignore_index=0)
+        # Optimizer
+        self.optimizer = Optimizer(self.rnnlm.parameters(),**self.config['hparas'])
+        # ToDo: load pre-trained model
+        if self.paras.load:
+            raise NotImplementedError
+
+    def exec(self):
+        ''' Training End-to-end ASR system '''
+        self.verbose('Total training steps {}.'.format(human_format(self.max_step)))
+        timer = Timer()
+
+        while self.step< self.max_step:
+            for data in self.tr_set:
+                # Pre-step : update tf_rate/lr_rate and do zero_grad
+                self.optimizer.pre_step(self.step)
+
+                # Fetch data
+                timer.set()
+                txt, txt_len = self.fetch_data(data)
+                timer.cnt('rd')
+
+                # Forward model
+                # Note: txt should NOT start w/ <sos>
+                pred, _ = self.rnnlm(txt[:,:-1], txt_len-1)
+
+                # Compute all objectives
+
+                lm_loss = self.seq_loss(pred.view(-1,self.vocab_size),txt[:,1:].reshape(-1))
+                timer.cnt('fw')
+
+                # Backprop
+                lm_loss.backward()
+                grad_norm = torch.nn.utils.clip_grad_norm_(self.rnnlm.parameters(), GRAD_CLIP)
+                if math.isnan(grad_norm):
+                    self.verbose('Error : grad norm is NaN @ step '+str(self.step))
+                else:
+                    self.optimizer.step()
+                timer.cnt('bw')
+
+                # Logger
+                if self.step%PROGRESS_STEP==0:
+                    self.progress('Tr stat | Loss - {:.2f} | Grad. Norm - {:.2f} | {}'\
+                            .format(lm_loss.cpu().item(),grad_norm,timer.show()))
+                    self.write_log('entropy',{'tr':lm_loss})
+                    self.write_log('perplexity',{'tr':torch.exp(lm_loss).cpu().item()})
+                # Validation
+                if self.step%self.valid_step == 0:
+                    self.validate()
+
+                # End of step
+                self.step+=1
+                if self.step > self.max_step:break
+
+    
+    def validate(self):
+        # Eval mode
+        self.rnnlm.eval()
+        dev_loss = []
+
+        for i,data in enumerate(self.dv_set):
+            self.progress('Valid step - {}/{}'.format(i+1,len(self.dv_set)))
+            # Fetch data
+            txt, txt_len = self.fetch_data(data)
+
+            # Forward model
+            with torch.no_grad():
+                pred, _ = self.rnnlm(txt[:,:-1], txt_len-1)
+            lm_loss = self.seq_loss(pred.view(-1,self.vocab_size),txt[:,1:].reshape(-1))
+            dev_loss.append(lm_loss)
+        
+        # Ckpt if performance improves
+        dev_loss = sum(dev_loss)/len(dev_loss)
+        dev_ppx = torch.exp(dev_loss).cpu().item()
+        if dev_loss < self.best_loss :
+            self.best_loss = dev_loss
+            self.save_checkpoint('best_ppx.pth',dev_ppx)
+        self.write_log('perplexity',{'dv':dev_ppx})
+
+        # Show some example of last batch on tensorboard
+        for i in range(min(len(txt),DEV_N_EXAMPLE)):
+            if self.step ==0:
+                self.write_log('true_text{}'.format(i),self.tokenizer.decode(txt[i].tolist()))
+            self.write_log('pred_text{}'.format(i),self.tokenizer.decode(pred[i].argmax(dim=-1).tolist()))
+
+        # Resume training
+        self.rnnlm.train()
+
+    def save_checkpoint(self, f_name, score):
+        ckpt_path = os.path.join(self.ckpdir, f_name)
+        full_dict = {
+            "rnnlm": self.rnnlm.state_dict(),
+            "optimizer": self.optimizer.get_opt_state_dict(),
+            "global_step": self.step,
+        }
+        torch.save(full_dict, ckpt_path)
+        self.verbose("Saved checkpoint (ppx = {:.2f}) and status @ {}".format(score,ckpt_path))
 

@@ -2,7 +2,7 @@ import torch
 
 
 class Optimizer():
-    def __init__(self, parameters, tf_start, tf_end, tf_step, optimizer, lr, lr_scheduler, **kwargs):
+    def __init__(self, parameters, optimizer, lr, lr_scheduler, tf_start=1, tf_end=1, tf_step=1, **kwargs):
         
         # Setup teacher forcing scheduler
         self.tf_rate = lambda step: max(tf_end, tf_start-(tf_start-tf_end)*step/tf_step)

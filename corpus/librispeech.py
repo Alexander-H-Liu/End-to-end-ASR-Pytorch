@@ -1,8 +1,10 @@
+from tqdm import tqdm
 from pathlib import Path
 from os.path import join,getsize
 from joblib import Parallel, delayed
 from torch.utils.data import Dataset
 
+OFFICIAL_TXT_SRC = ['librispeech-lm-norm.txt']
 
 def read_text(file):
     '''Get transcription of target wave file, 
@@ -15,7 +17,6 @@ def read_text(file):
         for line in fp:
             if idx == line.split(' ')[0]:
                 return line[:-1].split(' ',1)[1]
-
 
 class LibriDataset(Dataset):
     def __init__(self, path, split, tokenizer, bucket_size):
@@ -49,6 +50,44 @@ class LibriDataset(Dataset):
 
     def __len__(self):
         return len(self.file_list)
+
+class LibriTextDataset(Dataset):
+    def __init__(self, path, split, tokenizer, bucket_size):
+        # Setup
+        self.path = path
+        self.bucket_size = bucket_size
+        read_txt_src = []
+
+        # List all wave files
+        file_list = []
+        for s in split:
+            if s in OFFICIAL_TXT_SRC:
+                read_txt_src.append(s)
+                continue
+            file_list += list(Path(join(path,s)).rglob("*.flac"))
         
+        # Read text
+        text = Parallel(n_jobs=-1)(delayed(read_text)(str(f)) for f in file_list)
+        text = Parallel(n_jobs=-1)(delayed(tokenizer.encode)(txt) for txt in text)
+
+        # Read text from additional source
+        for s in read_txt_src:
+            with open(join(path,s),'r') as txt_file:
+                text.extend([tokenizer.encode(line[:-1]) for line in txt_file])
+
+        # Read file size and sort dataset by file size (Note: feature len. may be different)
+        text_len = [len(txt) for txt in text]
+        self.text = [txt for _,txt in sorted(zip(text_len,text), reverse=True, key=lambda x:x[0])]
+
+    def __getitem__(self,index):
+        if self.bucket_size>1:
+            # Return a bucket
+            index = min(len(self.text)-self.bucket_size,index)
+            return self.text[index:index+self.bucket_size]
+        else:
+            return self.text[index]
+
+    def __len__(self):
+        return len(self.text)
 
 
