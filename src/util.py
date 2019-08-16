@@ -90,3 +90,34 @@ def cal_er(tokenizer, pred, truth, mode='wer'):
     return sum(er)/len(er)
 
 
+def load_embedding(text_encoder, embedding_filepath):
+    with open(embedding_filepath, "r") as f:
+        vocab_size, embedding_size = [int(x) for x in f.readline().strip().split()]
+        embeddings = np.zeros((text_encoder.vocab_size, embedding_size))
+
+        unk_count = 0
+
+        for line in f:
+            vocab, emb = line.strip().split(" ", 1)
+            # fasttext's <eos> is </s>
+            if vocab == "</s>":
+                vocab = "<eos>"
+
+            if text_encoder.token_type == "subword":
+                idx = text_encoder.spm.piece_to_id(vocab)
+            else:
+                # get rid of <eos>
+                idx = text_encoder.encode(vocab)[0]
+
+            if idx == text_encoder.unk_idx:
+                unk_count += 1
+                embeddings[idx] += np.asarray([float(x) for x in emb.split(" ")])
+            else:
+                # Suppose there is only one (w, v) pair in embedding file
+                embeddings[idx] = np.asarray([float(x) for x in emb.split(" ")])
+
+        # Average <unk> vector
+        if unk_count != 0:
+            embeddings[text_encoder.unk_idx] /= unk_count
+
+        return embeddings
