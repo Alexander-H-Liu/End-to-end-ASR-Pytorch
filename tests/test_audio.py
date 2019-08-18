@@ -24,7 +24,7 @@ class TestAudio(unittest.TestCase):
         self.assertEqual(list(y.shape), [392, d])
 
     def test_mfcc(self):
-        self.skipTest("")
+        self.skipTest("torchaudio.compliance.kaldi.mfcc is not in torchaudio==0.3.0")
         audio_config = {
             "feat_type": "mfcc",
             "feat_dim": 13,
