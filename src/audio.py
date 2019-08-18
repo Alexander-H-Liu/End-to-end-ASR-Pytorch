@@ -78,38 +78,45 @@ class Delta(nn.Module):
         return "order={}, window_size={}".format(self.order, self.window_size)
 
 
-# TODO(WindQAQ): find more elegant way to deal with one line forward
-class ReadAudio(nn.Module):
-    def forward(self, filepath):
-        return torchaudio.load(filepath)[0]
-
-
 class Postprocess(nn.Module):
     def forward(self, x):
         # [channel, feature_dim, time] -> [time, channel, feature_dim]
-        x = x.transpose(0, 2).transpose(1, 2)
+        x = x.permute(2, 0, 1)
         # [time, channel, feature_dim] -> [time, feature_dim * channel]
         return x.reshape(x.size(0), -1).detach()
 
 
+class ExtractAudioFeature(nn.Module):
+    def __init__(self, mode="fbank", num_mel_bins=40, **kwargs):
+        super(ExtractAudioFeature, self).__init__()
+        self.mode = mode
+        self.extract_fn = torchaudio.compliance.kaldi.fbank if mode == "fbank" else torchaudio.compliance.kaldi.mfcc
+        self.num_mel_bins = num_mel_bins
+        self.kwargs = kwargs
+
+    def forward(self, filepath):
+        waveform, sample_rate = torchaudio.load(filepath)
+
+        y = self.extract_fn(waveform,
+                            num_mel_bins=self.num_mel_bins,
+                            channel=-1,
+                            sample_frequency=sample_rate,
+                            **self.kwargs)
+        return y.transpose(0, 1).unsqueeze(0)
+
+    def extra_repr(self):
+        return "mode={}, num_mel_bins={}".format(self.mode, self.num_mel_bins)
+
+
 def create_transform(audio_config):
-    feat_type = audio_config.pop("feat_type", "fbank")
+    feat_type = audio_config.pop("feat_type")
     feat_dim = audio_config.pop("feat_dim")
 
     delta_order = audio_config.pop("delta_order", 0)
     delta_window_size = audio_config.pop("delta_window_size", 2)
     apply_cmvn = audio_config.pop("apply_cmvn")
 
-    transforms = [ReadAudio()]
-
-    if feat_type == "fbank":
-        transforms.append(torchaudio.transforms.MelSpectrogram(
-            n_mels=feat_dim, **audio_config))
-    elif feat_type == "mfcc":
-        transforms.append(torchaudio.transforms.MFCC(
-            n_mfcc=feat_dim, melkwargs=audio_config))
-    else:
-        raise NotImplementedError("Only support `fbank` and `mfcc`.")
+    transforms = [ExtractAudioFeature(feat_type, feat_dim, **audio_config)]
 
     if delta_order >= 1:
         transforms.append(Delta(delta_order, delta_window_size))
