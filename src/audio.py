@@ -8,9 +8,9 @@ class CMVN(nn.Module):
 
     __constants__ = ["mode", "dim", "eps"]
 
-    def __init__(self, mode="global", dim=1, eps=1e-10):
+    def __init__(self, mode="global", dim=2, eps=1e-10):
         # `torchaudio.load()` loads audio with shape [channel, feature_dim, time]
-        # so perform normalization on dim=1 by default
+        # so perform normalization on dim=2 by default
         super(CMVN, self).__init__()
 
         if mode != "global":

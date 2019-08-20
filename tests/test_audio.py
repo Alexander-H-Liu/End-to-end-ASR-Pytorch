@@ -50,8 +50,8 @@ class TestAudio(unittest.TestCase):
         y = transform(self.filepath)
 
         self.assertEqual(list(y.shape), [392, d])
-        np.testing.assert_allclose(y.mean(1), 0.0, rtol=1e-6, atol=1e-6)
-        np.testing.assert_allclose(y.std(1), 1.0, rtol=1e-6, atol=1e-6)
+        np.testing.assert_allclose(y.mean(0), 0.0, rtol=1e-6, atol=5e-5)
+        np.testing.assert_allclose(y.std(0), 1.0, rtol=1e-6, atol=1e-6)
 
     def test_delta(self):
         audio_config = {
