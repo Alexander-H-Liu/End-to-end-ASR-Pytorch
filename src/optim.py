@@ -3,7 +3,7 @@ import numpy as np
 from torch.optim.lr_scheduler import LambdaLR
 
 class Optimizer():
-    def __init__(self, parameters, optimizer, lr, lr_scheduler, tf_start=1, tf_end=1, tf_step=1, **kwargs):
+    def __init__(self, parameters, optimizer, lr, eps, lr_scheduler, tf_start=1, tf_end=1, tf_step=1, **kwargs):
         
         # Setup teacher forcing scheduler
         self.tf_rate = lambda step: max(tf_end, tf_start-(tf_start-tf_end)*step/tf_step)
@@ -18,7 +18,7 @@ class Optimizer():
             self.lr_scheduler = LambdaLR(self.opt,lr_func)
         else:
             self.lr_scheduler = None
-            self.opt = opt(parameters,lr=lr)
+            self.opt = opt(parameters,lr=lr,eps=1e-8) # ToDo: 1e-8 better?
 
     def get_opt_state_dict(self):
         return self.opt.state_dict()

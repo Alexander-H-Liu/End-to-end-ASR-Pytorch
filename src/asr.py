@@ -200,7 +200,7 @@ class Attention(nn.Module):
         Output: Attention score                    with shape [batch size, num head, T (attention score of each time step)]
                 Context vector                     with shape [batch size, encoder feature dimension]
                 (i.e. weighted (by attention score) sum of all timesteps T's feature) '''
-    def __init__(self, v_dim, q_dim, mode, dim, num_head, temperature,
+    def __init__(self, v_dim, q_dim, mode, dim, num_head, temperature, v_proj,
                  loc_kernel_size, loc_kernel_num):
         super(Attention,self).__init__()
 
@@ -213,7 +213,9 @@ class Attention(nn.Module):
         # Linear proj. before attention
         self.proj_q = nn.Linear( q_dim, dim*num_head)
         self.proj_k = nn.Linear( v_dim, dim*num_head)
-        self.proj_v = nn.Linear( v_dim, v_dim*num_head)
+        self.v_proj = v_proj
+        if v_proj:
+            self.proj_v = nn.Linear( v_dim, v_dim*num_head)
 
         # Attention
         if self.mode == 'dot':
@@ -251,12 +253,17 @@ class Attention(nn.Module):
 
             # Store enc state to lower computational cost
             self.key =  torch.tanh(self.proj_k(enc_feat))
-            self.value = torch.tanh(self.proj_v(enc_feat))
+            self.value = torch.tanh(self.proj_v(enc_feat)) if self.v_proj else enc_feat # BxTxN
+                 
             if self.num_head>1:
                 self.key = self.key.view(bs,ts,self.num_head,self.dim).permute(0,2,1,3) # BxNxTxD
                 self.key = self.key.contiguous().view(bs*self.num_head,ts,self.dim) # BNxTxD
-                self.value = self.value.view(bs,ts,self.num_head,self.v_dim).permute(0,2,1,3) # BxNxTxD
-                self.value = self.value.contiguous().view(bs*self.num_head,ts,self.v_dim) # BNxTxD
+                if self.v_proj:
+                    self.value = self.value.view(bs,ts,self.num_head,self.v_dim).permute(0,2,1,3) # BxNxTxD
+                    self.value = self.value.contiguous().view(bs*self.num_head,ts,self.v_dim) # BNxTxD
+                else:
+                    self.value = self.value.repeat(self.num_head,1,1) #
+                
 
 
         # Calculate attention    

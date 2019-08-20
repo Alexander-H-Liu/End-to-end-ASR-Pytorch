@@ -37,7 +37,7 @@ class Solver():
     def verbose(self,msg):
         ''' Verbose function for print information to stdout'''
         if self.paras.verbose:
-            print('[INFO]',msg)
+            print('[INFO]',msg.ljust(100))
 
     def progress(self,msg):
         ''' Verbose function for updating progress on stdout'''
