@@ -5,7 +5,7 @@ from src.audio import create_transform
 from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
 
-DEV_N_JOBS = 2           # Number of threads used for dev set
+DEV_N_JOBS = 1           # Number of threads used for dev set
 HALF_BATCHSIZE_LEN = 800 # Batch size will be halfed if the longest wavefile surpasses threshold
 # Note: Bucketing may cause random sampling to be biased (less sampled for those length > HALF_BATCHSIZE_LEN ) 
 
@@ -65,8 +65,8 @@ def create_dataset(tokenizer, train_split, dev_split, name, path, bucketing, bat
     # Create dataset
     bucket_size = batch_size if bucketing else 1
     tr_loader_bs = 1 if bucketing else batch_size
-    tr_set = Dataset(path,train_split,tokenizer, bucket_size)
     dv_set = Dataset(path,dev_split,tokenizer, 1) # Do not use bucketing for dev set
+    tr_set = Dataset(path,train_split,tokenizer, bucket_size)
 
     # Messages to show
     msg_list = _data_msg(name,path,train_split.__str__(),len(tr_set),
@@ -87,9 +87,9 @@ def create_textset(tokenizer, train_split, dev_split, name, path, bucketing, bat
     # Create dataset
     bucket_size = batch_size if bucketing else 1
     tr_loader_bs = 1 if bucketing else batch_size
-    tr_set = Dataset(path,train_split,tokenizer, bucket_size)
     dv_set = Dataset(path,dev_split,tokenizer, 1) # Do not use bucketing for dev set
-
+    tr_set = Dataset(path,train_split,tokenizer, bucket_size)
+    
     # Messages to show
     msg_list = _data_msg(name,path,train_split.__str__(),len(tr_set),
                          dev_split.__str__(),len(dv_set),batch_size,bucketing)

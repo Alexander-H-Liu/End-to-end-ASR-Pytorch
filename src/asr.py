@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from torch.distributions.categorical import Categorical
 from torch.nn.utils.rnn import pack_padded_sequence,pad_packed_sequence
 
-from src.util import init_weights 
+from src.util import init_weights, init_gate
 from src.module import VGGExtractor, RNNLayer, ScaleDotAttention, LocationAwareAttention
 
 class ASR(nn.Module):
@@ -32,7 +32,10 @@ class ASR(nn.Module):
             self.decoder = Decoder(self.encoder.out_dim+self.dec_dim, vocab_size, **decoder)
             self.attention = Attention(self.encoder.out_dim, self.dec_dim, **attention)
 
+        # Init
         self.apply(init_weights)
+        for l in self.decoder.layers:
+            l.bias_ih = init_gate(l.bias_ih)
 
     def load_lm(self):
         pass #ToDo
@@ -269,7 +272,7 @@ class Attention(nn.Module):
 class Encoder(nn.Module):
     ''' Encoder (a.k.a. Listener in LAS)
         Encodes acoustic feature to latent representation, see config file for more details.'''
-    def __init__(self, input_size, vgg, module, bidirection, dim, dropout, layer_norm, sample_rate, sample_style):
+    def __init__(self, input_size, vgg, module, bidirection, dim, dropout, layer_norm, proj, sample_rate, sample_style):
         super(Encoder, self).__init__()
 
         # Hyper-parameters checking
@@ -293,7 +296,7 @@ class Encoder(nn.Module):
         if module in ['LSTM','GRU']:
             for l in range(num_layers):
                 module_list.append(RNNLayer(input_dim, module, dim[l], bidirection, dropout[l], layer_norm[l],
-                                            sample_rate[l], sample_style))
+                                            sample_rate[l], sample_style, proj[l]))
                 input_dim = module_list[-1].out_dim
                 self.sample_rate = self.sample_rate*sample_rate[l]
         else:

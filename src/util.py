@@ -63,6 +63,11 @@ def init_weights(module):
                 data.normal_(0, stdv)
             else:
                 raise NotImplementedError
+def init_gate(bias):
+    n = bias.size(0)
+    start, end = n // 4, n // 2
+    bias.data[start:end].fill_(1.)
+    return bias
 
 # Reference : https://stackoverflow.com/questions/579310/formatting-long-numbers-as-strings-in-python
 def human_format(num):

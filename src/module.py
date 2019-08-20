@@ -63,7 +63,7 @@ class VGGExtractor(nn.Module):
 
 class RNNLayer(nn.Module):
     ''' RNN wrapper, includes time-downsampling'''
-    def __init__(self, input_dim, module, dim, bidirection, dropout, layer_norm, sample_rate, sample_style):
+    def __init__(self, input_dim, module, dim, bidirection, dropout, layer_norm, sample_rate, sample_style, proj):
         super(RNNLayer, self).__init__()
         # Setup
         rnn_out_dim = 2*dim if bidirection else dim
@@ -72,6 +72,7 @@ class RNNLayer(nn.Module):
         self.layer_norm = layer_norm
         self.sample_rate = sample_rate
         self.sample_style = sample_style
+        self.proj = proj
 
         if self.sample_style not in ['drop','concat']:
             raise ValueError('Unsupported Sample Style: '+self.sample_style)
@@ -84,6 +85,10 @@ class RNNLayer(nn.Module):
             self.ln = nn.LayerNorm(rnn_out_dim)
         if self.dropout>0:
             self.dp = nn.Dropout(p=dropout)
+
+        # Additional projection layer
+        if self.proj:
+            self.pj = nn.Linear(rnn_out_dim,rnn_out_dim)
 
     
     def forward(self, input_x , x_len):
@@ -113,6 +118,9 @@ class RNNLayer(nn.Module):
                     output = output[:,:-(timestep%self.sample_rate),:]
                 output = output.contiguous().view(batch_size,int(timestep/self.sample_rate),feature_dim*self.sample_rate)
 
+        if self.proj:
+            output = torch.tanh(self.pj(output)) 
+
         return output,x_len
 
 class BaseAttention(nn.Module):
@@ -121,7 +129,7 @@ class BaseAttention(nn.Module):
         super().__init__()
         self.temperature = temperature
         self.num_head = num_head
-        self.softmax = nn.Softmax(dim=1)
+        self.softmax = nn.Softmax(dim=-1)
         self.reset_mem()
 
     def reset_mem(self):

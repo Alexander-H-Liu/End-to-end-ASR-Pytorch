@@ -5,6 +5,7 @@ from joblib import Parallel, delayed
 from torch.utils.data import Dataset
 
 OFFICIAL_TXT_SRC = ['librispeech-lm-norm.txt']
+READ_FILE_THREADS = 4
 
 def read_text(file):
     '''Get transcription of target wave file, 
@@ -30,11 +31,12 @@ class LibriDataset(Dataset):
             file_list += list(Path(join(path,s)).rglob("*.flac"))
         
         # Read text
-        text = Parallel(n_jobs=-1)(delayed(read_text)(str(f)) for f in file_list)
-        text = Parallel(n_jobs=-1)(delayed(tokenizer.encode)(txt) for txt in text)
+        text = Parallel(n_jobs=READ_FILE_THREADS)(delayed(read_text)(str(f)) for f in file_list)
+        #text = Parallel(n_jobs=-1)(delayed(tokenizer.encode)(txt) for txt in text)
+        text = [tokenizer.encode(txt) for txt in text]
         
         # Read file size and sort dataset by file size (Note: feature len. may be different)
-        file_len = Parallel(n_jobs=-1)(delayed(getsize)(f) for f in file_list)
+        file_len = Parallel(n_jobs=READ_FILE_THREADS)(delayed(getsize)(f) for f in file_list)
         self.file_list, self.text = zip(*[(f_name,txt) \
                     for _,f_name,txt in sorted(zip(file_len,file_list,text), reverse=True, key=lambda x:x[0])])
 
@@ -67,13 +69,15 @@ class LibriTextDataset(Dataset):
             file_list += list(Path(join(path,s)).rglob("*.flac"))
         
         # Read text
-        text = Parallel(n_jobs=-1)(delayed(read_text)(str(f)) for f in file_list)
-        text = Parallel(n_jobs=-1)(delayed(tokenizer.encode)(txt) for txt in text)
+        text = Parallel(n_jobs=READ_FILE_THREADS)(delayed(read_text)(str(f)) for f in file_list)
+        #text = Parallel(n_jobs=-1)(delayed(tokenizer.encode)(txt) for txt in text)
+        text = [tokenizer.encode(txt) for txt in text]
 
         # Read text from additional source
         for s in read_txt_src:
             with open(join(path,s),'r') as txt_file:
-                text.extend([tokenizer.encode(line[:-1]) for line in txt_file])
+                for line in txt_file:
+                    text.append(tokenizer.encode(line[:-1]))
 
         # Read file size and sort dataset by file size (Note: feature len. may be different)
         text_len = [len(txt) for txt in text]

@@ -32,6 +32,7 @@ class Solver():
         self.ckpdir = os.path.join(paras.ckpdir,self.exp_name)
         os.makedirs(self.ckpdir, exist_ok=True)
 
+        self.verbose('Loading data... large corpus may took a while.')
 
     def verbose(self,msg):
         ''' Verbose function for print information to stdout'''
@@ -89,7 +90,6 @@ class Trainer(Solver):
 
     def load_data(self):
         ''' Load data for training/validation, store tokenizer and input/output shape'''
-        self.verbose('Loading data, large text file may took a while...')
         self.tr_set, self.dv_set, self.feat_dim, self.vocab_size, self.tokenizer, msg = \
                          load_dataset(self.paras.njobs, self.paras.gpu, self.paras.pin_memory, **self.config['data'])
         for m in msg: self.verbose(m)
@@ -102,7 +102,7 @@ class Trainer(Solver):
 
         # Losses
         self.seq_loss = torch.nn.CrossEntropyLoss(ignore_index=0, reduction='none')
-        self.ctc_loss = torch.nn.CTCLoss(blank=0, zero_infinity=True) # Note: zero_infinity=False is unstable?
+        self.ctc_loss = torch.nn.CTCLoss(blank=0, zero_infinity=False) # Note: zero_infinity=False is unstable?
 
         # Optimizer
         self.optimizer = Optimizer(self.asr_model.parameters(),**self.config['hparas'])
@@ -120,6 +120,7 @@ class Trainer(Solver):
         timer = Timer()
         ctc_loss = None
         att_loss = None
+        timer.set()
 
         while self.step< self.max_step:
             for data in self.tr_set:
@@ -127,7 +128,6 @@ class Trainer(Solver):
                 tf_rate = self.optimizer.pre_step(self.step)
 
                 # Fetch data
-                timer.set()
                 feat, feat_len, txt, txt_len = self.fetch_data(data)
                 timer.cnt('rd')
 
@@ -168,8 +168,8 @@ class Trainer(Solver):
                 if self.step%PROGRESS_STEP==0:
                     self.progress('Tr stat | Loss - {:.2f} | Grad. Norm - {:.2f} | {}'\
                             .format(total_loss.cpu().item(),grad_norm,timer.show()))
-                    self.write_log('ctc_loss',{'tr':ctc_loss})
-                    self.write_log('att_loss',{'tr':att_loss})
+                    self.write_log('loss',{'tr_ctc':ctc_loss})
+                    self.write_log('loss',{'tr_att':att_loss})
                     self.write_log('wer',{'tr_att':cal_er(self.tokenizer,att_output,txt),
                                           'tr_ctc':cal_er(self.tokenizer,ctc_output,txt)})
                 # Validation
@@ -178,9 +178,9 @@ class Trainer(Solver):
 
                 # End of step
                 self.step+=1
+                timer.set()
                 if self.step > self.max_step:break
 
-    
     def validate(self):
         # Eval mode
         self.asr_model.eval()
@@ -228,7 +228,7 @@ class Trainer(Solver):
             "global_step": self.step,
         }
         torch.save(full_dict, ckpt_path)
-        self.verbose("Saved checkpoint (wer = {:.2f}%) and status @ {}".format(score*100,ckpt_path))
+        self.verbose("Saved step {} checkpoint (wer = {:.2f}%) and status @ {}".format(human_format(self.step),score*100,ckpt_path))
 
 
 
@@ -292,7 +292,7 @@ class LMTrainer(Solver):
 
                 # Forward model
                 # Note: txt should NOT start w/ <sos>
-                pred, _ = self.rnnlm(txt[:,:-1], txt_len-1)
+                pred, _ = self.rnnlm(txt[:,:-1], txt_len)
 
                 # Compute all objectives
 
