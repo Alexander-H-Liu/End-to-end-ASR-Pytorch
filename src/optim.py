@@ -18,7 +18,7 @@ class Optimizer():
             self.lr_scheduler = LambdaLR(self.opt,lr_func)
         else:
             self.lr_scheduler = None
-            self.opt = opt(parameters,lr=lr,eps=1e-8) # ToDo: 1e-8 better?
+            self.opt = opt(parameters,lr=lr,eps=eps) # ToDo: 1e-8 better?
 
     def get_opt_state_dict(self):
         return self.opt.state_dict()

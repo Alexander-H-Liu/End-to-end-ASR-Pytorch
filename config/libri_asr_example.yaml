@@ -24,12 +24,13 @@ data:
 
 hparas:                                   # Experiment hyper-parameters
   valid_step: 5000
-  max_step: 150000
+  max_step: 200000
   tf_start: 1.0
   tf_end: 1.0
   tf_step: 150000
   optimizer: 'Adadelta'
   lr: 1.0
+  eps: 0.00000001                          # 1e-8
   lr_scheduler: 'fixed'                    # 'fixed'/'warmup'
   
 model:                                     # Model architecture
@@ -41,14 +42,15 @@ model:                                     # Model architecture
     dim: [320,320,320,320,320]
     dropout: [0,0,0,0,0]
     layer_norm: [False,False,False,False,False]
-    proj: [False,False,False,False,False]  # Linear projection + Tanh after each rnn layer
+    proj: [True,True,True,True,True]       # Linear projection + Tanh after each rnn layer
     sample_rate: [1,1,1,1,1]
     sample_style: 'drop'                   # 'drop'/'concat'
   attention:
     mode: 'loc'                            # 'dot'/'loc'
     dim: 300
     num_head: 1
-    temperature: 1                        # scaling factor for attention
+    v_proj: False                          # if False and num_head>1, encoder state will be duplicated for each head
+    temperature: 0.5                        # scaling factor for attention
     loc_kernel_size: 100                   # just for mode=='loc'
     loc_kernel_num: 10                     # just for mode=='loc'
   decoder:
