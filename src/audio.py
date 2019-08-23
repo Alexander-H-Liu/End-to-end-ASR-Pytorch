@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import torchaudio
 
 
-class CMVN(nn.Module):
+class CMVN(torch.jit.ScriptModule):
 
     __constants__ = ["mode", "dim", "eps"]
 
@@ -21,6 +21,7 @@ class CMVN(nn.Module):
         self.dim = dim
         self.eps = eps
 
+    @torch.jit.script_method
     def forward(self, x):
         if self.mode == "global":
             return (x - x.mean(self.dim, keepdim=True)) / (self.eps + x.std(self.dim, keepdim=True))
@@ -29,7 +30,7 @@ class CMVN(nn.Module):
         return "mode={}, dim={}, eps={}".format(self.mode, self.dim, self.eps)
 
 
-class Delta(nn.Module):
+class Delta(torch.jit.ScriptModule):
 
     __constants__ = ["order", "window_size", "padding"]
 
@@ -46,6 +47,7 @@ class Delta(nn.Module):
         self.register_buffer("filters", filters)
         self.padding = (0, (filters.shape[-1] - 1) // 2)
 
+    @torch.jit.script_method
     def forward(self, x):
         # Unsqueeze batch dim
         x = x.unsqueeze(0)
@@ -78,7 +80,8 @@ class Delta(nn.Module):
         return "order={}, window_size={}".format(self.order, self.window_size)
 
 
-class Postprocess(nn.Module):
+class Postprocess(torch.jit.ScriptModule):
+    @torch.jit.script_method
     def forward(self, x):
         # [channel, feature_dim, time] -> [time, channel, feature_dim]
         x = x.permute(2, 0, 1)
@@ -86,6 +89,7 @@ class Postprocess(nn.Module):
         return x.reshape(x.size(0), -1).detach()
 
 
+# TODO(Windqaq): make this scriptable
 class ExtractAudioFeature(nn.Module):
     def __init__(self, mode="fbank", num_mel_bins=40, **kwargs):
         super(ExtractAudioFeature, self).__init__()
