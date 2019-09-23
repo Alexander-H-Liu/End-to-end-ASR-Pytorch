@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchaudio
 
-
 class CMVN(torch.jit.ScriptModule):
 
     __constants__ = ["mode", "dim", "eps"]
@@ -106,7 +105,7 @@ class ExtractAudioFeature(nn.Module):
                             channel=-1,
                             sample_frequency=sample_rate,
                             **self.kwargs)
-        return y.transpose(0, 1).unsqueeze(0)
+        return y.transpose(0, 1).unsqueeze(0).detach()
 
     def extra_repr(self):
         return "mode={}, num_mel_bins={}".format(self.mode, self.num_mel_bins)

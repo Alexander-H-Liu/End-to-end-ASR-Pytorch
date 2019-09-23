@@ -1,6 +1,5 @@
 import math
 import torch
-import random
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
@@ -17,6 +16,7 @@ class ASR(nn.Module):
 
         # Setup
         assert 0<=ctc_weight<=1
+        self.vocab_size = vocab_size
         self.ctc_weight = ctc_weight
         self.enable_ctc = ctc_weight > 0
         self.enable_att = ctc_weight != 1
@@ -37,8 +37,10 @@ class ASR(nn.Module):
         for l in self.decoder.layers:
             l.bias_ih = init_gate(l.bias_ih)
 
-    def load_lm(self):
-        pass #ToDo
+    def set_state(self, prev_state, prev_attn):
+        ''' Setting up all memory states for beam decoding'''
+        self.decoder.set_state(prev_state)
+        self.attention.set_mem(prev_attn)
 
     def create_msg(self):
         # Messages for user
@@ -52,12 +54,24 @@ class ASR(nn.Module):
             msg.append('           | {} attention decoder enabled ( lambda = {}).'.format(self.attention.mode,1-self.ctc_weight))
         return msg
 
-    def forward(self, audio_feature, feature_len, decode_step,tf_rate=0.0,teacher=None):
+    def forward(self, audio_feature, feature_len, decode_step, tf_rate=0.0, teacher=None, 
+                      emb_decoder=None, get_dec_state=False):
+        '''
+        Arguments
+            audio_feature - [BxTxD] Acoustic feature with shape 
+            feature_len   - [B]     Length of each sample in a batch
+            decode_step   - [int]   The maximum number of attention decoder steps 
+            tf_rate       - [0,1]   The probability to perform teacher forcing for each step
+            teacher       - [BxLxD] Ground truth for teacher forcing with sentence length L
+            emb_decoder   - [obj]   Introduces the word embedding decoder, different behavior for training/inference
+                                    At training stage, this ONLY affects self-sampling (output remains the same)
+                                    At inference stage, this affects output to become log prob. with distribution fusion
+            get_dec_state - [bool]  If true, return decoder state [BxLxD] for other purpose
+        '''
         # Init
         bs = audio_feature.shape[0]
-        ctc_output = None
-        att_output = None
-        att_seq = None
+        ctc_output, att_output, att_seq = None, None, None
+        dec_state = [] if get_dec_state else None
 
         # Encode
         encode_feature,encode_len = self.encoder(audio_feature,feature_len)
@@ -82,32 +96,44 @@ class ASR(nn.Module):
             # Decode
             for t in range(decode_step):
                 # Attend (inputs current state of first layer, encoded features)
-                attn,context = self.attention(self.decoder.get_state(),encode_feature,encode_len)
+                attn,context = self.attention(self.decoder.get_query(),encode_feature,encode_len)
                 # Decode (inputs context + embedded last character)                
                 decoder_input = torch.cat([last_char,context],dim=-1)
-                cur_char = self.decoder(decoder_input)
+                cur_char, d_state = self.decoder(decoder_input)
                 # Prepare output as input of next step
                 if (teacher is not None):
-                    if random.random() <= tf_rate:
+                    # Training stage
+                    if torch.rand(1).item() <= tf_rate:
                         # teacher forcing
                         last_char = teacher[:,t,:]
                     else:
                         # self-sampling (replace by argmax may be another choice)
-                        sampled_char = Categorical(F.softmax(cur_char,dim=-1)).sample()
+                        with torch.no_grad():
+                            if (emb_decoder is not None) and emb_decoder.apply_fuse:
+                                _, cur_prob = emb_decoder(d_state,cur_char,return_loss=False)
+                            else:
+                                cur_prob = cur_char.softmax(dim=-1)
+                            sampled_char = Categorical(cur_prob).sample()
                         last_char = self.pre_embed(sampled_char)
                 else:
+                    # Inference stage
+                    if (emb_decoder is not None) and emb_decoder.apply_fuse:
+                        _,cur_char = emb_decoder(d_state,cur_char,return_loss=False)
                     # argmax for inference
                     last_char = self.pre_embed(torch.argmax(cur_char,dim=-1))
 
                 # save output of each step
                 output_seq.append(cur_char)
                 att_seq.append(attn)
+                if get_dec_state:
+                    dec_state.append(d_state)
 
             att_output = torch.stack(output_seq,dim=1) # BxTxV
             att_seq = torch.stack(att_seq,dim=2)       # BxNxDtxT
+            if get_dec_state:
+                dec_state = torch.stack(dec_state,dim=1)
 
-        return ctc_output, encode_len, att_output, att_seq
-
+        return ctc_output, encode_len, att_output, att_seq, dec_state
 
 
 class Decoder(nn.Module):
@@ -149,23 +175,42 @@ class Decoder(nn.Module):
 
         
     def init_state(self, context):
-        # Set all hidden states to zeros
+        ''' Set all hidden states to zeros '''
         self.state_list = [torch.zeros((context.shape[0],self.dim),device=context.device)]*self.layer
         if self.enable_cell:
             self.cell_list = [torch.zeros((context.shape[0],self.dim),device=context.device)]*self.layer
+            return self.state_list, self.cell_list
+        return self.state_list
+
+    def set_state(self, state_list):
+        ''' Set all hidden states/cells, for decoding purpose'''
+        device = next(self.parameters()).device
+        if self.enable_cell:
+            state_list, cell_list = state_list
+            self.cell_list = [c.to(device) for c in cell_list]
+        self.state_list = [s.to(device) for s in state_list]
 
     def get_state(self):
+        ''' Return all hidden states/cells, for decoding purpose'''
+        state_list = [s.cpu() for s in self.state_list]
+        if self.enable_cell:
+            cell_list = [c.cpu() for c in self.cell_list]
+            return state_list, cell_list
+        return state_list
+
+    def get_query(self):
+        ''' Return state of layer 0 as query for attention '''
         return self.state_list[0]
 
     def _get_layer_state(self, layer_idx):
-        # Get hidden state of specified layer
+        ''' Get hidden state of specified layer '''
         if self.enable_cell:
             return (self.state_list[layer_idx],self.cell_list[layer_idx])
         else:
             return self.state_list[layer_idx]
 
     def _store_layer_state(self, layer_idx, state):
-        # Replace hidden state of specified layer
+        ''' Replace hidden state of specified layer '''
         if self.enable_cell:
             self.state_list[layer_idx] = state[0]
             self.cell_list[layer_idx] = state[1]
@@ -175,6 +220,7 @@ class Decoder(nn.Module):
             return state
 
     def forward(self, x):
+        ''' Manually forward through all layers '''
         for i, layers in enumerate(self.layers):
             state = self._get_layer_state(i)
             x = layers(x,state)
@@ -185,11 +231,9 @@ class Decoder(nn.Module):
             if self.dropout > 0:
                 x = self.dp(x)
 
-        x = self.char_trans(x)
+        char = self.char_trans(x)
         
-        return x
-
-
+        return char, x
 
 
 class Attention(nn.Module):  
@@ -240,6 +284,9 @@ class Attention(nn.Module):
         self.mask = None
         self.att_layer.reset_mem()
 
+    def set_mem(self,prev_attn):
+        self.att_layer.set_mem(prev_attn)
+
     def forward(self, dec_state, enc_feat, enc_len):
 
         # Preprecessing
@@ -273,7 +320,6 @@ class Attention(nn.Module):
             context = self.merge_head(context) # BxD
         
         return attn,context
-
 
 
 class Encoder(nn.Module):

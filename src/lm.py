@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 class RNNLM(nn.Module):
     ''' RNN Language Model '''
     def __init__(self, vocab_size, emb_tying, emb_dim, module, dim, n_layers, dropout):
@@ -29,10 +28,12 @@ class RNNLM(nn.Module):
         emb_x = self.emb(x)
         if self.dropout:
             emb_x = self.dp(emb_x)
-
-        packed = nn.utils.rnn.pack_padded_sequence(emb_x, lens,batch_first=True)
-        outputs, hidden = self.rnn(packed, hidden) # output: (seq_len, batch, hidden*n_dir)
-        outputs, _ = nn.utils.rnn.pad_packed_sequence(outputs,batch_first=True)
+        # Not using pack
+        if not self.training:
+            self.rnn.flatten_parameters()
+        #packed = nn.utils.rnn.pack_padded_sequence(emb_x, lens,batch_first=True)
+        outputs, hidden = self.rnn(emb_x, hidden) # output: (seq_len, batch, hidden)
+        #outputs, _ = nn.utils.rnn.pad_packed_sequence(outputs,batch_first=True)
         outputs = self.post_rnn(outputs)
         if self.emb_tying:
             outputs = F.linear(outputs,self.emb.weight)

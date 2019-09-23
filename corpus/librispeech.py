@@ -4,8 +4,8 @@ from os.path import join,getsize
 from joblib import Parallel, delayed
 from torch.utils.data import Dataset
 
-OFFICIAL_TXT_SRC = ['librispeech-lm-norm.txt']
-READ_FILE_THREADS = 4
+OFFICIAL_TXT_SRC  = ['librispeech-lm-norm.txt']  # Additional (official) text src provided
+READ_FILE_THREADS = 4                            # Default num. of threads used for loading LibriSpeech
 
 def read_text(file):
     '''Get transcription of target wave file, 
@@ -49,7 +49,6 @@ class LibriDataset(Dataset):
         else:
             return self.file_list[index], self.text[index]
 
-
     def __len__(self):
         return len(self.file_list)
 
@@ -61,27 +60,25 @@ class LibriTextDataset(Dataset):
         read_txt_src = []
 
         # List all wave files
-        file_list = []
+        file_list, all_sent = [],[]
+
         for s in split:
             if s in OFFICIAL_TXT_SRC:
-                read_txt_src.append(s)
-                continue
+                with open(join(path,s),'r') as f:
+                    all_sent += f.readlines()
             file_list += list(Path(join(path,s)).rglob("*.flac"))
         
         # Read text
         text = Parallel(n_jobs=READ_FILE_THREADS)(delayed(read_text)(str(f)) for f in file_list)
-        #text = Parallel(n_jobs=-1)(delayed(tokenizer.encode)(txt) for txt in text)
-        text = [tokenizer.encode(txt) for txt in text]
+        all_sent.extend(text)
+        del text
 
-        # Read text from additional source
-        for s in read_txt_src:
-            with open(join(path,s),'r') as txt_file:
-                for line in txt_file:
-                    text.append(tokenizer.encode(line[:-1]))
+        # Encode text from additional source
+        self.text = [tokenizer.encode(txt) for txt in tqdm(all_sent)]
+        del all_sent
 
         # Read file size and sort dataset by file size (Note: feature len. may be different)
-        text_len = [len(txt) for txt in text]
-        self.text = [txt for _,txt in sorted(zip(text_len,text), reverse=True, key=lambda x:x[0])]
+        self.text = sorted(self.text, reverse=True, key=lambda x:len(x))
 
     def __getitem__(self,index):
         if self.bucket_size>1:

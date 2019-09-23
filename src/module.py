@@ -90,9 +90,10 @@ class RNNLayer(nn.Module):
         if self.proj:
             self.pj = nn.Linear(rnn_out_dim,rnn_out_dim)
 
-    
     def forward(self, input_x , x_len):
         # Forward RNN
+        if not self.training:
+            self.layer.flatten_parameters()
         # ToDo: check time efficiency of pack/pad
         input_x = pack_padded_sequence(input_x, x_len, batch_first=True)
         output,_ = self.layer(input_x)
@@ -123,6 +124,7 @@ class RNNLayer(nn.Module):
 
         return output,x_len
 
+
 class BaseAttention(nn.Module):
     ''' Base module for attentions '''
     def __init__(self, temperature, num_head):
@@ -136,6 +138,9 @@ class BaseAttention(nn.Module):
         # Reset mask
         self.mask = None
         self.k_len = None
+
+    def set_mem(self):
+        pass
 
     def compute_mask(self,k_len):
         # Make the mask for padded states
@@ -169,6 +174,7 @@ class ScaleDotAttention(BaseAttention):
 
         return output, attn
 
+
 class LocationAwareAttention(BaseAttention):
     ''' Location-Awared Attention '''
     def __init__(self, kernel_size, kernel_num, dim, num_head, temperature):
@@ -182,6 +188,9 @@ class LocationAwareAttention(BaseAttention):
     def reset_mem(self):
         super().reset_mem()
         self.prev_att = None
+
+    def set_mem(self, prev_att):
+        self.prev_att = prev_att
 
     def forward(self, q, k, v):
         bs_nh,ts,_ = k.shape

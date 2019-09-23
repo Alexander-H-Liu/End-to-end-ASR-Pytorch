@@ -1,5 +1,6 @@
 import math
 import time
+import torch
 import numpy as np
 from torch import nn
 import editdistance as ed
@@ -7,7 +8,6 @@ import editdistance as ed
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-
 
 class Timer():
     ''' Timer for recording training time distribution. '''
@@ -69,6 +69,25 @@ def init_gate(bias):
     bias.data[start:end].fill_(1.)
     return bias
 
+# Convert Tensor to Figure on tensorboard
+def feat_to_fig(feat):
+    # feat TxD tensor
+    data = _save_canvas(feat.numpy().T)
+    return torch.FloatTensor(data),"HWC"
+
+def _save_canvas(data, meta=None):
+    fig, ax = plt.subplots(figsize=(16, 10))
+    if meta is None:
+        ax.imshow(data, aspect="auto", origin="lower")
+    else:
+        ax.bar(meta[0],data[0],tick_label=meta[1],fc=(0, 0, 1, 0.5))
+        ax.bar(meta[0],data[1],tick_label=meta[1],fc=(1, 0, 0, 0.5))
+    fig.canvas.draw()
+    # Note : torch tb add_image takes color as [0,1]
+    data = np.array(fig.canvas.renderer._renderer)[:,:,:-1]/255.0 
+    plt.close(fig)
+    return data
+
 # Reference : https://stackoverflow.com/questions/579310/formatting-long-numbers-as-strings-in-python
 def human_format(num):
     magnitude = 0
@@ -76,9 +95,9 @@ def human_format(num):
         magnitude += 1
         num /= 1000.0
     # add more suffixes if you need them
-    return '{:3}{}'.format(num, [' ', 'K', 'M', 'G', 'T', 'P'][magnitude])
+    return '{:3.1f}{}'.format(num, [' ', 'K', 'M', 'G', 'T', 'P'][magnitude])
 
-def cal_er(tokenizer, pred, truth, mode='wer'):
+def cal_er(tokenizer, pred, truth, mode='wer', ctc=False):
     # Calculate error rate of a batch
     if pred is None:
         return np.nan
@@ -86,7 +105,7 @@ def cal_er(tokenizer, pred, truth, mode='wer'):
         pred = pred.argmax(dim=-1)
     er = []
     for p,t in zip(pred,truth):
-        p = tokenizer.decode(p.tolist())
+        p = tokenizer.decode(p.tolist(), ignore_repeat=ctc)
         t = tokenizer.decode(t.tolist())
         if mode == 'wer':
             p = p.split(' ')

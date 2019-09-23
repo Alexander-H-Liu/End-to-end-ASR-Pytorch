@@ -4,7 +4,6 @@ Reference: https://www.tensorflow.org/datasets/api_docs/python/tfds/features/tex
 """
 import abc
 
-
 class _BaseTextEncoder(abc.ABC):
     @abc.abstractmethod
     def encode(self):
@@ -55,11 +54,11 @@ class CharacterTextEncoder(_BaseTextEncoder):
         # Manually append eos to the end
         return [self.vocab_to_idx(v) for v in s] + [self.eos_idx]
 
-    def decode(self, ids):
+    def decode(self, idxs, ignore_repeat=False):
         vocabs = []
-        for i in ids:
-            v = self.idx_to_vocab(i)
-            if v == "<pad>":
+        for t,idx in enumerate(idxs):
+            v = self.idx_to_vocab(idx)
+            if v == "<pad>" or (ignore_repeat and t>0 and idx==vocabs[t-1] ):
                 continue
             elif v == "<eos>":
                 break
@@ -90,7 +89,6 @@ class CharacterTextEncoder(_BaseTextEncoder):
         return self._vocab_list[idx]
 
 
-
 class SubwordTextEncoder(_BaseTextEncoder):
     def __init__(self, spm):
         if spm.pad_id() != 0 or spm.eos_id() != 1 or spm.unk_id() != 2:
@@ -102,16 +100,20 @@ class SubwordTextEncoder(_BaseTextEncoder):
     def encode(self, s):
         return self.spm.encode_as_ids(s)
 
-    def decode(self, ids):
-        for i, x in enumerate(ids):
-            if x == self.eos_idx:
+    def decode(self, idxs, ignore_repeat=False):
+        crop_idx = []
+        for t,idx in enumerate(idxs):
+            if idx == self.eos_idx:
                 break
-        return self.spm.decode_ids(ids[:i])
+            elif idx == self.pad_idx or (ignore_repeat and t>0 and idx==idxs[t-1]):
+                continue
+            else:
+                crop_idx.append(idx)
+        return self.spm.decode_ids(crop_idx)
 
     @classmethod
     def load_from_file(cls, filepath):
         import sentencepiece as splib
-
         spm = splib.SentencePieceProcessor()
         spm.load(filepath)
         spm.set_encode_extra_options(":eos")
@@ -135,13 +137,16 @@ class WordTextEncoder(CharacterTextEncoder):
         # Manually append eos to the end
         return [self.vocab_to_idx(v) for v in words] + [self.eos_idx]
 
-    def decode(self, ids):
+    def decode(self, idxs, ignore_repeat=False):
         vocabs = []
-        for i in ids:
-            v = self.idx_to_vocab(i)
-            if v in ["<pad>", "<eos>"]:
+        for t,idx in enumerate(idxs):
+            v = self.idx_to_vocab(idx)
+            if v in "<eos>":
                 break
-            vocabs.append(v)
+            elif v=="<pad>" or (ignore_repeat and t>0 and idx==idxs[t-1]):
+                continue
+            else:
+                vocabs.append(v)
         return " ".join(vocabs)
 
     @property
