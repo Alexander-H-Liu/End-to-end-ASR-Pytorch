@@ -4,13 +4,14 @@ Reference: https://www.tensorflow.org/datasets/api_docs/python/tfds/features/tex
 """
 import abc
 
+
 class _BaseTextEncoder(abc.ABC):
     @abc.abstractmethod
-    def encode(self):
+    def encode(self, s):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def decode(self):
+    def decode(self, ids, ignore_repeat=False):
         raise NotImplementedError
 
     @abc.abstractproperty
@@ -56,9 +57,9 @@ class CharacterTextEncoder(_BaseTextEncoder):
 
     def decode(self, idxs, ignore_repeat=False):
         vocabs = []
-        for t,idx in enumerate(idxs):
+        for t, idx in enumerate(idxs):
             v = self.idx_to_vocab(idx)
-            if v == "<pad>" or (ignore_repeat and t>0 and idx==vocabs[t-1] ):
+            if v == "<pad>" or (ignore_repeat and t > 0 and idx == vocabs[t-1]):
                 continue
             elif v == "<eos>":
                 break
@@ -102,10 +103,10 @@ class SubwordTextEncoder(_BaseTextEncoder):
 
     def decode(self, idxs, ignore_repeat=False):
         crop_idx = []
-        for t,idx in enumerate(idxs):
+        for t, idx in enumerate(idxs):
             if idx == self.eos_idx:
                 break
-            elif idx == self.pad_idx or (ignore_repeat and t>0 and idx==idxs[t-1]):
+            elif idx == self.pad_idx or (ignore_repeat and t > 0 and idx == idxs[t-1]):
                 continue
             else:
                 crop_idx.append(idx)
@@ -139,11 +140,11 @@ class WordTextEncoder(CharacterTextEncoder):
 
     def decode(self, idxs, ignore_repeat=False):
         vocabs = []
-        for t,idx in enumerate(idxs):
+        for t, idx in enumerate(idxs):
             v = self.idx_to_vocab(idx)
             if v in "<eos>":
                 break
-            elif v=="<pad>" or (ignore_repeat and t>0 and idx==idxs[t-1]):
+            elif v == "<pad>" or (ignore_repeat and t > 0 and idx == idxs[t-1]):
                 continue
             else:
                 vocabs.append(v)
@@ -154,6 +155,58 @@ class WordTextEncoder(CharacterTextEncoder):
         return 'word'
 
 
+class BertTextEncoder(_BaseTextEncoder):
+    """Bert Tokenizer.
+
+    https://github.com/huggingface/pytorch-transformers/blob/master/pytorch_transformers/tokenization_bert.py
+    """
+
+    def __init__(self, tokenizer):
+        self._tokenizer = tokenizer
+        self._tokenizer.pad_token = "<pad>"
+        self._tokenizer.eos_token = "<eos>"
+        self._tokenizer.unk_token = "<unk>"
+
+    def encode(self, s):
+        return self._tokenizer.encode(s)
+
+    def decode(self, idxs, ignore_repeat=False):
+        crop_idx = []
+        for t, idx in enumerate(idxs):
+            if idx == self.eos_idx:
+                break
+            elif idx == self.pad_idx or (ignore_repeat and t > 0 and idx == idxs[t-1]):
+                continue
+            else:
+                crop_idx.append(idx)
+        return self._tokenizer.decode(crop_idx)
+
+    @property
+    def vocab_size(self):
+        return self._tokenizer.vocab_size
+
+    @property
+    def token_type(self):
+        return "subword"
+
+    @classmethod
+    def load_from_file(cls, vocab_file):
+        from pytorch_transformers import BertTokenizer
+        return cls(BertTokenizer.from_pretrained(vocab_file))
+
+    @property
+    def pad_idx(self):
+        return self._tokenizer.pad_token_id
+
+    @property
+    def eos_idx(self):
+        return self._tokenizer.eos_token_id
+
+    @property
+    def unk_idx(self):
+        return self._tokenizer.unk_token_id
+
+
 def load_text_encoder(mode, vocab_file):
     if mode == "character":
         return CharacterTextEncoder.load_from_file(vocab_file)
@@ -161,5 +214,7 @@ def load_text_encoder(mode, vocab_file):
         return SubwordTextEncoder.load_from_file(vocab_file)
     elif mode == "word":
         return WordTextEncoder.load_from_file(vocab_file)
+    elif mode.startswith("bert-"):
+        return BertTextEncoder(mode)
     else:
         raise NotImplementedError("`{}` is not yet supported.".format(mode))

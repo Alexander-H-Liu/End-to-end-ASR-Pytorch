@@ -72,3 +72,23 @@ class TestWordTextEncoder(unittest.TestCase):
 
         decoded = text_encoder.decode(ids)
         self.assertEqual(decoded, self.text.replace("!!!", "<unk>"))
+
+
+class TestBertTextEncoder(unittest.TestCase):
+    def setUp(self):
+        super(TestBertTextEncoder, self).__init__()
+        self.vocab_file = "bert-base-uncased"
+        self.text = "SPEECH LAB IS GREAT!!!"
+
+    def test_load_from_file(self):
+        text_encoder = text.BertTextEncoder.load_from_file(self.vocab_file)
+        self._test_encode_decode(text_encoder)
+
+    def _test_encode_decode(self, text_encoder):
+        ids = text_encoder.encode(self.text)
+
+        self.assertEqual(30522, text_encoder.vocab_size)
+        self.assertEqual(ids, [4613, 6845, 2003, 2307, 999, 999, 999])
+
+        decoded = text_encoder.decode(ids)
+        self.assertEqual(decoded.upper(), self.text)
