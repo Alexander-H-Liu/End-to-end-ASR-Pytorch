@@ -7,20 +7,22 @@ class VGGExtractor(nn.Module):
     ''' VGG extractor for ASR described in https://arxiv.org/pdf/1706.02737.pdf'''
     def __init__(self,input_dim):
         super(VGGExtractor, self).__init__()
+        self.init_dim = 64
+        self.hide_dim = 128
         in_channel,freq_dim,out_dim = self.check_dim(input_dim)
         self.in_channel = in_channel
         self.freq_dim = freq_dim
         self.out_dim = out_dim
 
         self.extractor = nn.Sequential(
-                                nn.Conv2d(in_channel, 64, 3, stride=1, padding=1),
+                                nn.Conv2d( in_channel, self.init_dim, 3, stride=1, padding=1),
                                 nn.ReLU(),
-                                nn.Conv2d(    64, 64, 3, stride=1, padding=1),
+                                nn.Conv2d( self.init_dim, self.init_dim, 3, stride=1, padding=1),
                                 nn.ReLU(),
                                 nn.MaxPool2d(2, stride=2), # Half-time dimension
-                                nn.Conv2d(    64,128, 3, stride=1, padding=1),
+                                nn.Conv2d( self.init_dim, self.hide_dim, 3, stride=1, padding=1),
                                 nn.ReLU(),
-                                nn.Conv2d(   128,128, 3, stride=1, padding=1),
+                                nn.Conv2d( self.hide_dim, self.hide_dim, 3, stride=1, padding=1),
                                 nn.ReLU(),
                                 nn.MaxPool2d(2, stride=2) # Half-time dimension
                             )
@@ -29,10 +31,10 @@ class VGGExtractor(nn.Module):
         # Check input dimension, delta feature should be stack over channel. 
         if input_dim%13 == 0:
             # MFCC feature
-            return int(input_dim/13),13,(13//4)*128
+            return int(input_dim/13),13,(13//4)*self.hide_dim
         elif input_dim%40 == 0:
             # Fbank feature
-            return int(input_dim/40),40,(40//4)*128
+            return int(input_dim/40),40,(40//4)*self.hide_dim
         else:
             raise ValueError('Acoustic feature dimension for VGG should be 13/26/39(MFCC) or 40/80/120(Fbank) but got '+d)
 
@@ -95,9 +97,9 @@ class RNNLayer(nn.Module):
         if not self.training:
             self.layer.flatten_parameters()
         # ToDo: check time efficiency of pack/pad
-        input_x = pack_padded_sequence(input_x, x_len, batch_first=True)
+        #input_x = pack_padded_sequence(input_x, x_len, batch_first=True, enforce_sorted=False)
         output,_ = self.layer(input_x)
-        output,x_len = pad_packed_sequence(output,batch_first=True)
+        #output,x_len = pad_packed_sequence(output,batch_first=True)
 
         # Normalizations
         if self.layer_norm:
@@ -142,11 +144,10 @@ class BaseAttention(nn.Module):
     def set_mem(self):
         pass
 
-    def compute_mask(self,k_len):
+    def compute_mask(self,k,k_len):
         # Make the mask for padded states
         self.k_len = k_len
-        bs = len(k_len)
-        ts = max(k_len)
+        bs,ts,_ = k.shape
         self.mask = np.zeros((bs,self.num_head,ts))
         for idx,sl in enumerate(k_len):
             self.mask[idx,:,sl:] = 1 # ToDo: more elegant way?

@@ -20,7 +20,7 @@ def read_text(file):
                 return line[:-1].split(' ',1)[1]
 
 class LibriDataset(Dataset):
-    def __init__(self, path, split, tokenizer, bucket_size):
+    def __init__(self, path, split, tokenizer, bucket_size, ascending=False):
         # Setup
         self.path = path
         self.bucket_size = bucket_size
@@ -29,16 +29,17 @@ class LibriDataset(Dataset):
         file_list = []
         for s in split:
             file_list += list(Path(join(path,s)).rglob("*.flac"))
+        assert len(file_list)>0, "No data found @ {}".format(path)
         
         # Read text
         text = Parallel(n_jobs=READ_FILE_THREADS)(delayed(read_text)(str(f)) for f in file_list)
         #text = Parallel(n_jobs=-1)(delayed(tokenizer.encode)(txt) for txt in text)
         text = [tokenizer.encode(txt) for txt in text]
         
-        # Read file size and sort dataset by file size (Note: feature len. may be different)
-        file_len = Parallel(n_jobs=READ_FILE_THREADS)(delayed(getsize)(f) for f in file_list)
+        # Sort dataset by text length
+        #file_len = Parallel(n_jobs=READ_FILE_THREADS)(delayed(getsize)(f) for f in file_list) 
         self.file_list, self.text = zip(*[(f_name,txt) \
-                    for _,f_name,txt in sorted(zip(file_len,file_list,text), reverse=True, key=lambda x:x[0])])
+                    for f_name,txt in sorted(zip(file_list,text), reverse=not ascending, key=lambda x:len(x[1]))])
 
     def __getitem__(self,index):
         if self.bucket_size>1:
@@ -57,6 +58,7 @@ class LibriTextDataset(Dataset):
         # Setup
         self.path = path
         self.bucket_size = bucket_size
+        self.encode_on_fly = False
         read_txt_src = []
 
         # List all wave files
@@ -64,17 +66,23 @@ class LibriTextDataset(Dataset):
 
         for s in split:
             if s in OFFICIAL_TXT_SRC:
+                self.encode_on_fly = True
                 with open(join(path,s),'r') as f:
                     all_sent += f.readlines()
             file_list += list(Path(join(path,s)).rglob("*.flac"))
+        assert (len(file_list)>0) or (len(all_sent)>0), "No data found @ {}".format(path)
         
         # Read text
         text = Parallel(n_jobs=READ_FILE_THREADS)(delayed(read_text)(str(f)) for f in file_list)
         all_sent.extend(text)
         del text
 
-        # Encode text from additional source
-        self.text = [tokenizer.encode(txt) for txt in tqdm(all_sent)]
+        # Encode text
+        if self.encode_on_fly:
+            self.tokenizer = tokenizer
+            self.text = all_sent
+        else:
+            self.text = [tokenizer.encode(txt) for txt in tqdm(all_sent)]
         del all_sent
 
         # Read file size and sort dataset by file size (Note: feature len. may be different)
@@ -82,10 +90,16 @@ class LibriTextDataset(Dataset):
 
     def __getitem__(self,index):
         if self.bucket_size>1:
-            # Return a bucket
             index = min(len(self.text)-self.bucket_size,index)
+            if self.encode_on_fly:
+                for i in range(index,index+self.bucket_size):
+                    if type(self.text[i]) is str:
+                        self.text[i] = self.tokenizer.encode(self.text[i])
+            # Return a bucket
             return self.text[index:index+self.bucket_size]
         else:
+            if self.encode_on_fly and type(self.text[index]) is str:
+                self.text[index] = self.tokenizer.encode(self.text[index])
             return self.text[index]
 
     def __len__(self):

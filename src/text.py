@@ -4,6 +4,8 @@ Reference: https://www.tensorflow.org/datasets/api_docs/python/tfds/features/tex
 """
 import abc
 
+BERT_FIRST_IDX = 997  # Replacing the 2 tokens right before english starts as <eos> & <unk>
+BERT_LAST_IDX = 29635 # Drop rest of tokens
 
 class _BaseTextEncoder(abc.ABC):
     @abc.abstractmethod
@@ -168,7 +170,17 @@ class BertTextEncoder(_BaseTextEncoder):
         self._tokenizer.unk_token = "<unk>"
 
     def encode(self, s):
-        return self._tokenizer.encode(s)
+        # Reduce vocab size manually
+        reduced_idx = []
+        for idx in self._tokenizer.encode(s):
+            try:
+                r_idx = idx-BERT_FIRST_IDX
+                assert r_idx>0
+                reduced_idx.append(r_idx)
+            except:
+                reduced_idx.append(self.unk_idx)
+        reduced_idx.append(self.eos_idx)
+        return reduced_idx
 
     def decode(self, idxs, ignore_repeat=False):
         crop_idx = []
@@ -178,12 +190,12 @@ class BertTextEncoder(_BaseTextEncoder):
             elif idx == self.pad_idx or (ignore_repeat and t > 0 and idx == idxs[t-1]):
                 continue
             else:
-                crop_idx.append(idx)
+                crop_idx.append(idx+BERT_FIRST_IDX) # Shift to correct idx for bert tokenizer
         return self._tokenizer.decode(crop_idx)
 
     @property
     def vocab_size(self):
-        return self._tokenizer.vocab_size
+        return BERT_LAST_IDX-BERT_FIRST_IDX+1
 
     @property
     def token_type(self):
@@ -196,15 +208,15 @@ class BertTextEncoder(_BaseTextEncoder):
 
     @property
     def pad_idx(self):
-        return self._tokenizer.pad_token_id
+        return 0
 
     @property
     def eos_idx(self):
-        return self._tokenizer.eos_token_id
+        return 1
 
     @property
     def unk_idx(self):
-        return self._tokenizer.unk_token_id
+        return 2
 
 
 def load_text_encoder(mode, vocab_file):
@@ -215,6 +227,6 @@ def load_text_encoder(mode, vocab_file):
     elif mode == "word":
         return WordTextEncoder.load_from_file(vocab_file)
     elif mode.startswith("bert-"):
-        return BertTextEncoder(mode)
+        return BertTextEncoder.load_from_file(mode)
     else:
         raise NotImplementedError("`{}` is not yet supported.".format(mode))

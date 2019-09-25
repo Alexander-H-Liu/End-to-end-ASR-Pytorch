@@ -90,8 +90,8 @@ class BaseSolver():
             self.model.load_state_dict(ckpt['model'])
             if self.emb_decoder is not None:
                 self.emb_decoder.load_state_dict(ckpt['emb_decoder'])
-            if self.amp:
-                amp.load_state_dict(ckpt['amp'])
+            #if self.amp:
+            #    amp.load_state_dict(ckpt['amp'])
             # Load task-dependent items
             if self.mode == 'train':
                 self.step = ckpt['global_step']
@@ -154,8 +154,8 @@ class BaseSolver():
             metric: score
         }
         # Additional modules to save
-        if self.amp:
-            full_dict['amp'] = amp.state_dict()
+        #if self.amp:
+        #    full_dict['amp'] = self.amp_lib.state_dict()
         if self.emb_decoder is not None:
             full_dict['emb_decoder'] = self.emb_decoder.state_dict()
 
@@ -165,10 +165,11 @@ class BaseSolver():
 
     def enable_apex(self):
         if self.amp:
-            # Enable mixed precision computation
+            # Enable mixed precision computation (ToDo: Save/Load amp)
             from apex import amp
+            self.amp_lib = amp
             self.verbose("AMP enabled (check https://github.com/NVIDIA/apex for more details).")
-            self.model, self.optimizer.opt = amp.initialize(self.model, self.optimizer.opt, opt_level='O1')
+            self.model, self.optimizer.opt = self.amp_lib.initialize(self.model, self.optimizer.opt, opt_level='O1')
 
 
     # ----------------------------------- Abtract Methods ------------------------------------------ #

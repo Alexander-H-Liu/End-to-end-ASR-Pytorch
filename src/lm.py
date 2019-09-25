@@ -9,15 +9,15 @@ class RNNLM(nn.Module):
         self.dim = dim
         self.n_layers = n_layers
         self.emb_tying = emb_tying
+        if emb_tying:
+            assert emb_dim==dim, "Output dim of RNN should be identical to embedding if using weight tying."
         self.vocab_size = vocab_size
         self.emb = nn.Embedding(vocab_size, emb_dim)
-        self.dropout = dropout>0
-        if self.dropout:
-            self.dp = nn.Dropout(dropout)
+        self.dp1 = nn.Dropout(dropout)
+        self.dp2 = nn.Dropout(dropout)
         self.rnn = getattr(nn, module.upper())(emb_dim, dim, num_layers=n_layers, dropout=dropout, batch_first=True)
-        self.post_rnn = nn.Linear(dim,emb_dim,bias=None)
         if not self.emb_tying:
-            self.trans = nn.Linear(emb_dim,vocab_size,bias=None)
+            self.trans = nn.Linear(emb_dim,vocab_size)
 
     def create_msg(self):
         # Messages for user
@@ -25,18 +25,14 @@ class RNNLM(nn.Module):
         return msg
 
     def forward(self, x, lens, hidden=None):
-        emb_x = self.emb(x)
-        if self.dropout:
-            emb_x = self.dp(emb_x)
-        # Not using pack
+        emb_x = self.dp1(self.emb(x))
         if not self.training:
             self.rnn.flatten_parameters()
-        #packed = nn.utils.rnn.pack_padded_sequence(emb_x, lens,batch_first=True)
-        outputs, hidden = self.rnn(emb_x, hidden) # output: (seq_len, batch, hidden)
-        #outputs, _ = nn.utils.rnn.pad_packed_sequence(outputs,batch_first=True)
-        outputs = self.post_rnn(outputs)
+        packed = nn.utils.rnn.pack_padded_sequence(emb_x, lens, batch_first=True, enforce_sorted=False)
+        outputs, hidden = self.rnn(packed, hidden) # output: (seq_len, batch, hidden)
+        outputs, _ = nn.utils.rnn.pad_packed_sequence(outputs, batch_first=True)
         if self.emb_tying:
-            outputs = F.linear(outputs,self.emb.weight)
+            outputs = F.linear(self.dp2(outputs),self.emb.weight)
         else:
-            outputs = self.trans(outputs)
+            outputs = self.trans(self.dp2(outputs))
         return outputs, hidden

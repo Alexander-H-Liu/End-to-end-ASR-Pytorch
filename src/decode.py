@@ -187,7 +187,8 @@ class Hypothesis:
         new_hypothesis = []
         term_score = None
         ctc_s,ctc_p = None,None
-        beam_size = len(topi[0])
+        beam_size = topi.shape[-1]
+
         
         for i in range(beam_size):
             # Detect <eos>

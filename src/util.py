@@ -72,7 +72,7 @@ def init_gate(bias):
 # Convert Tensor to Figure on tensorboard
 def feat_to_fig(feat):
     # feat TxD tensor
-    data = _save_canvas(feat.numpy().T)
+    data = _save_canvas(feat.numpy())
     return torch.FloatTensor(data),"HWC"
 
 def _save_canvas(data, meta=None):

@@ -6,6 +6,7 @@ from src.optim import Optimizer
 from src.data import load_textset
 from src.util import human_format
 
+
 class Solver(BaseSolver):
     ''' Solver for training language models'''
     def __init__(self,config,paras,mode):
@@ -16,7 +17,7 @@ class Solver(BaseSolver):
     def fetch_data(self, data):
         ''' Move data to device, insert <sos> and compute text seq. length'''
         txt = torch.cat((torch.zeros((data.shape[0],1),dtype=torch.long),data), dim=1).to(self.device)
-        txt_len = torch.sum(data!=0,dim=-1)+1
+        txt_len = torch.sum(data!=0,dim=-1)
         return txt, txt_len
 
     def load_data(self):
@@ -61,7 +62,7 @@ class Solver(BaseSolver):
                 self.timer.cnt('rd')
 
                 # Forward model
-                pred, _ = self.model(txt[:,:-1], txt_len-1)
+                pred, _ = self.model(txt[:,:-1], txt_len)
 
                 # Compute all objectives
                 lm_loss = self.seq_loss(pred.view(-1,self.vocab_size),txt[:,1:].reshape(-1))
@@ -99,7 +100,7 @@ class Solver(BaseSolver):
 
             # Forward model
             with torch.no_grad():
-                pred, _ = self.model(txt[:,:-1], txt_len-1)
+                pred, _ = self.model(txt[:,:-1], txt_len)
             lm_loss = self.seq_loss(pred.view(-1,self.vocab_size),txt[:,1:].reshape(-1))
             dev_loss.append(lm_loss)
         
@@ -109,6 +110,7 @@ class Solver(BaseSolver):
         if dev_loss < self.best_loss :
             self.best_loss = dev_loss
             self.save_checkpoint('best_ppx.pth','perplexity',dev_ppx)
+        self.write_log('entropy',{'dv':dev_loss})
         self.write_log('perplexity',{'dv':dev_ppx})
 
         # Show some example of last batch on tensorboard

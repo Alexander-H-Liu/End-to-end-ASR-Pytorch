@@ -31,7 +31,7 @@ def collect_audio_batch(batch, audio_transform, mode):
             audio_feat.append(feat)
             audio_len.append(len(feat))
             text.append(torch.LongTensor(b[1]))
-    # Descending length
+    # Descending audio length within each batch
     audio_len, file, audio_feat, text = zip(*[(feat_len,f_name,feat,txt) \
             for feat_len,f_name,feat,txt in sorted(zip(audio_len,file,audio_feat,text), reverse=True, key=lambda x:x[0])]) 
     # Zero-padding
@@ -46,7 +46,7 @@ def collect_text_batch(batch, mode):
        e.g. [txt1 <list>,txt2 <list>,...] '''
 
     # Bucketed batch should be [[txt1, txt2,...]]
-    if type(batch[0]) is not tuple:
+    if type(batch[0][0]) is list:
         batch = batch[0]
     # Half batch size if input to long
     if len(batch[0])>HALF_BATCHSIZE_TEXT_LEN and mode=='train':
@@ -59,7 +59,7 @@ def collect_text_batch(batch, mode):
     return text
 
 
-def create_dataset(tokenizer, name, path, bucketing, batch_size, 
+def create_dataset(tokenizer, ascending, name, path, bucketing, batch_size, 
                    train_split=None, dev_split=None, test_split=None):
     ''' Interface for creating all kinds of dataset'''
 
@@ -73,10 +73,10 @@ def create_dataset(tokenizer, name, path, bucketing, batch_size,
     if train_split is not None:
         # Training mode
         mode = 'train'
-        tr_loader_bs = 1 if bucketing else batch_size
-        bucket_size = batch_size if bucketing else 1
+        tr_loader_bs = 1 if bucketing and (not ascending) else batch_size
+        bucket_size = batch_size if bucketing and (not ascending) else 1 # Ascending without bucketing
         dv_set = Dataset(path,dev_split,tokenizer, 1) # Do not use bucketing for dev set
-        tr_set = Dataset(path,train_split,tokenizer, bucket_size)
+        tr_set = Dataset(path,train_split,tokenizer, bucket_size, ascending=ascending)
         # Messages to show
         msg_list = _data_msg(name,path,train_split.__str__(),len(tr_set),
                              dev_split.__str__(),len(dv_set),batch_size,bucketing)
@@ -116,7 +116,7 @@ def create_textset(tokenizer, train_split, dev_split, name, path, bucketing, bat
 
     return tr_set, dv_set, tr_loader_bs, batch_size, msg_list
 
-def load_dataset(n_jobs, use_gpu, pin_memory, corpus, audio, text):
+def load_dataset(n_jobs, use_gpu, pin_memory, ascending, corpus, audio, text):
     ''' Prepare dataloader for training/validation'''
 
     # Audio feature extractor
@@ -124,14 +124,14 @@ def load_dataset(n_jobs, use_gpu, pin_memory, corpus, audio, text):
     # Text tokenizer
     tokenizer = load_text_encoder(**text)
     # Dataset (in testing mode, tr_set=dv_set, dv_set=tt_set)
-    tr_set, dv_set, tr_loader_bs, dv_loader_bs, mode, data_msg = create_dataset(tokenizer,**corpus)
+    tr_set, dv_set, tr_loader_bs, dv_loader_bs, mode, data_msg = create_dataset(tokenizer,ascending,**corpus)
     # Collect function
     collect_tr = partial(collect_audio_batch, audio_transform=audio_transform, mode=mode)
     collect_dv = partial(collect_audio_batch, audio_transform=audio_transform, mode='test')
     # Shuffle/drop applied to training set only
-    shuffle= mode=='train'
-    drop_last= mode=='train'
-    num_workers= max(0,n_jobs-DEV_N_JOBS) if mode=='train' else DEV_N_JOBS
+    shuffle = (mode=='train' and not ascending)
+    drop_last = shuffle
+    num_workers = max(0,n_jobs-DEV_N_JOBS) if mode=='train' else DEV_N_JOBS
     # Create data loader
     tr_set = DataLoader(tr_set, batch_size=tr_loader_bs, shuffle=shuffle, drop_last=drop_last, collate_fn=collect_tr,
                         num_workers=num_workers, pin_memory=use_gpu)

@@ -12,7 +12,8 @@ class Solver(BaseSolver):
         super().__init__(config,paras,mode)
         # Logger settings
         self.best_wer = {'att':3.0,'ctc':3.0}
-        
+        # Curriculum learning affects data loader
+        self.curriculum = self.config['hparas']['curriculum']
 
     def fetch_data(self, data):
         ''' Move data to device and compute text seq. length'''
@@ -27,7 +28,8 @@ class Solver(BaseSolver):
     def load_data(self):
         ''' Load data for training/validation, store tokenizer and input/output shape'''
         self.tr_set, self.dv_set, self.feat_dim, self.vocab_size, self.tokenizer, msg = \
-                         load_dataset(self.paras.njobs, self.paras.gpu, self.paras.pin_memory, **self.config['data'])
+                         load_dataset(self.paras.njobs, self.paras.gpu, self.paras.pin_memory, 
+                                      self.curriculum>0, **self.config['data'])
         self.verbose(msg)
 
     def set_model(self):
@@ -70,9 +72,16 @@ class Solver(BaseSolver):
         ''' Training End-to-end ASR system '''
         self.verbose('Total training steps {}.'.format(human_format(self.max_step)))
         ctc_loss, att_loss, emb_loss = None, None, None
+        n_epochs = 0
         self.timer.set()
 
         while self.step< self.max_step:
+            # Renew dataloader to enable random sampling 
+            if self.curriculum>0 and n_epochs==self.curriculum:
+                self.verbose('Curriculum learning ends after {} epochs, starting random sampling.'.format(n_epochs))
+                self.tr_set, _, _, _, _, _ = \
+                         load_dataset(self.paras.njobs, self.paras.gpu, self.paras.pin_memory, 
+                                      False, **self.config['data'])
             for data in self.tr_set:
                 # Pre-step : update tf_rate/lr_rate and do zero_grad
                 tf_rate = self.optimizer.pre_step(self.step)
@@ -95,10 +104,11 @@ class Solver(BaseSolver):
                 
                 # Compute all objectives
                 if ctc_output is not None:
-                    if self.paras.ctc_backend =='cudnn':
+                    if self.paras.cudnn_ctc:
                         ctc_loss = self.ctc_loss(ctc_output.transpose(0,1), 
                                                  txt.to_sparse().values().to(device='cpu',dtype=torch.int32),
-                                                 [int(encode_len.max()) for _ in encode_len],
+                                                 [ctc_output.shape[1]]*len(ctc_output),
+                                                 #[int(encode_len.max()) for _ in encode_len],
                                                  txt_len.cpu().tolist())
                     else:
                         ctc_loss = self.ctc_loss(ctc_output.transpose(0,1), txt, encode_len, txt_len)
@@ -125,7 +135,7 @@ class Solver(BaseSolver):
                     self.write_log('loss',{'tr_ctc':ctc_loss,'tr_att':att_loss})
                     self.write_log('emb_loss',{'tr':emb_loss})
                     self.write_log('wer',{'tr_att':cal_er(self.tokenizer,att_output,txt),
-                                          'tr_ctc':cal_er(self.tokenizer,ctc_output,txt)})
+                                          'tr_ctc':cal_er(self.tokenizer,ctc_output,txt,ctc=True)})
                     if self.emb_fuse: 
                         if self.emb_decoder.fuse_learnable:
                             self.write_log('fuse_lambda',{'emb':self.emb_decoder.get_weight()})
@@ -139,6 +149,7 @@ class Solver(BaseSolver):
                 torch.cuda.empty_cache() # https://github.com/pytorch/pytorch/issues/13246#issuecomment-529185354
                 self.timer.set()
                 if self.step > self.max_step:break
+            n_epochs +=1
 
     def validate(self):
         # Eval mode
@@ -154,11 +165,23 @@ class Solver(BaseSolver):
             # Forward model
             with torch.no_grad():
                 ctc_output, encode_len, att_output, att_align, dec_state = \
-                    self.model( feat, feat_len, max(txt_len)+self.ADDITIONAL_DEV_STEP, 
+                    self.model( feat, feat_len, int(max(txt_len)*self.DEV_STEP_RATIO), 
                                     emb_decoder=self.emb_decoder)
 
             dev_wer['att'].append(cal_er(self.tokenizer,att_output,txt))
-            dev_wer['ctc'].append(cal_er(self.tokenizer,ctc_output,txt))
+            dev_wer['ctc'].append(cal_er(self.tokenizer,ctc_output,txt,ctc=True))
+
+            # Show some example on tensorboard
+            if i == len(self.dv_set)//2:
+                for i in range(min(len(txt),self.DEV_N_EXAMPLE)):
+                    if self.step ==0:
+                        self.write_log('true_text{}'.format(i),self.tokenizer.decode(txt[i].tolist()))
+                    if att_output is not None:
+                        self.write_log('att_align{}'.format(i),feat_to_fig(att_align[i,0,:,:].cpu().detach()))
+                        self.write_log('att_text{}'.format(i),self.tokenizer.decode(att_output[i].argmax(dim=-1).tolist()))
+                    if ctc_output is not None:
+                        self.write_log('ctc_text{}'.format(i),self.tokenizer.decode(ctc_output[i].argmax(dim=-1).tolist(),
+                                                                                                       ignore_repeat=True))
         
         # Ckpt if performance improves
         for task in ['att','ctc']:
@@ -167,16 +190,6 @@ class Solver(BaseSolver):
                 self.best_wer[task] = dev_wer[task]
                 self.save_checkpoint('best_{}.pth'.format(task),'wer',dev_wer[task])
             self.write_log('wer',{'dv_'+task:dev_wer[task]})
-
-        # Show some example of last batch on tensorboard
-        for i in range(min(len(txt),self.DEV_N_EXAMPLE)):
-            if self.step ==0:
-                self.write_log('true_text{}'.format(i),self.tokenizer.decode(txt[i].tolist()))
-            if att_output is not None:
-                self.write_log('att_align{}'.format(i),feat_to_fig(att_align[i,0,:,:].cpu().detach()))
-                self.write_log('att_text{}'.format(i),self.tokenizer.decode(att_output[i].argmax(dim=-1).tolist()))
-            if ctc_output is not None:
-                self.write_log('ctc_text{}'.format(i),self.tokenizer.decode(ctc_output[i].argmax(dim=-1).tolist()))
 
         # Resume training
         self.model.train()

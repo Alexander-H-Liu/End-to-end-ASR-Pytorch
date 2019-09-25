@@ -4,7 +4,6 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions.categorical import Categorical
-from torch.nn.utils.rnn import pack_padded_sequence,pad_packed_sequence
 
 from src.util import init_weights, init_gate
 from src.module import VGGExtractor, RNNLayer, ScaleDotAttention, LocationAwareAttention
@@ -86,8 +85,7 @@ class ASR(nn.Module):
             self.decoder.init_state(encode_feature)
             self.attention.reset_mem()
             last_char = self.pre_embed(torch.zeros((bs),dtype=torch.long, device=encode_feature.device))
-            output_seq = []
-            att_seq = []
+            att_seq, output_seq = [], []
 
             # Preprocess data for teacher forcing
             if teacher is not None:
@@ -103,7 +101,7 @@ class ASR(nn.Module):
                 # Prepare output as input of next step
                 if (teacher is not None):
                     # Training stage
-                    if torch.rand(1).item() <= tf_rate:
+                    if (tf_rate==1) or (torch.rand(1).item()<=tf_rate):
                         # teacher forcing
                         last_char = teacher[:,t,:]
                     else:
@@ -296,7 +294,7 @@ class Attention(nn.Module):
 
         if self.key is None:
             # Maskout attention score for padded states
-            self.att_layer.compute_mask(enc_len.to(enc_feat.device))
+            self.att_layer.compute_mask(enc_feat,enc_len.to(enc_feat.device))
 
             # Store enc state to lower computational cost
             self.key =  torch.tanh(self.proj_k(enc_feat))

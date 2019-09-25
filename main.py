@@ -18,7 +18,7 @@ parser.add_argument('--ckpdir', default='ckpt/', type=str, help='Checkpoint path
 parser.add_argument('--outdir', default='result/', type=str, help='Decode output path.', required=False)
 parser.add_argument('--load', default=None, type=str, help='Load pre-trained model (for training only)', required=False)
 parser.add_argument('--seed', default=0, type=int, help='Random seed for reproducable results.', required=False)
-parser.add_argument('--ctc-backend', default='torch', type=str, help='CTC backend (torch/cudnn)')
+parser.add_argument('--cudnn-ctc', action='store_true', help='Switches CTC backend from torch to cudnn')
 parser.add_argument('--njobs', default=4, type=int, help='Number of threads for dataloader/decoding.', required=False)
 parser.add_argument('--cpu', action='store_true', help='Disable GPU training.')
 parser.add_argument('--no-pin', action='store_true', help='Disable pin-memory for dataloader')
@@ -26,6 +26,7 @@ parser.add_argument('--test', action='store_true', help='Test the model.')
 parser.add_argument('--no-msg', action='store_true', help='Hide all messages.')
 parser.add_argument('--lm', action='store_true', help='Option for training RNNLM.')
 parser.add_argument('--amp', action='store_true', help='Option to enable AMP.')
+parser.add_argument('--reserve_gpu', default=0, type=float, help='Option to reserve GPU ram for training.')
 parser.add_argument('--jit', action='store_true', help='Option for enabling jit in pytorch. (feature in development)')
 paras = parser.parse_args()
 setattr(paras,'gpu',not paras.cpu)
@@ -36,6 +37,11 @@ config = yaml.load(open(paras.config,'r'), Loader=yaml.FullLoader)
 np.random.seed(paras.seed)
 torch.manual_seed(paras.seed)
 if torch.cuda.is_available(): torch.cuda.manual_seed_all(paras.seed)
+
+# Hack to preserve GPU ram just incase OOM later on server
+if paras.gpu and paras.reserve_gpu>0:
+    buff = torch.randn(int(paras.reserve_gpu*1e9//4)).cuda()
+    del buff
 
 if paras.lm:
     # Train RNNLM
