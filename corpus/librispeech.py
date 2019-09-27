@@ -5,6 +5,7 @@ from joblib import Parallel, delayed
 from torch.utils.data import Dataset
 
 OFFICIAL_TXT_SRC  = ['librispeech-lm-norm.txt']  # Additional (official) text src provided
+REMOVE_TOP_N_TXT  = 5000000                      # Remove longest N sentence in librispeech-lm-norm.txt
 READ_FILE_THREADS = 4                            # Default num. of threads used for loading LibriSpeech
 
 def read_text(file):
@@ -87,6 +88,8 @@ class LibriTextDataset(Dataset):
 
         # Read file size and sort dataset by file size (Note: feature len. may be different)
         self.text = sorted(self.text, reverse=True, key=lambda x:len(x))
+        if self.encode_on_fly:
+            del self.text[:REMOVE_TOP_N_TXT]
 
     def __getitem__(self,index):
         if self.bucket_size>1:

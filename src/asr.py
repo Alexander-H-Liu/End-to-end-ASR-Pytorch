@@ -10,7 +10,7 @@ from src.module import VGGExtractor, RNNLayer, ScaleDotAttention, LocationAwareA
 
 class ASR(nn.Module):
     ''' ASR model, including Encoder/Decoder(s)'''
-    def __init__(self, input_size, vocab_size, ctc_weight, encoder, attention, decoder):
+    def __init__(self, input_size, vocab_size, ctc_weight, encoder, attention, decoder, emb_drop=0.0):
         super(ASR, self).__init__()
 
         # Setup
@@ -28,13 +28,16 @@ class ASR(nn.Module):
         if self.enable_att:
             self.dec_dim = decoder['dim']
             self.pre_embed = nn.Embedding(vocab_size, self.dec_dim)
+            self.embed_drop = nn.Dropout(emb_drop)
             self.decoder = Decoder(self.encoder.out_dim+self.dec_dim, vocab_size, **decoder)
-            self.attention = Attention(self.encoder.out_dim, self.dec_dim, **attention)
+            query_dim = self.dec_dim*self.decoder.layer
+            self.attention = Attention(self.encoder.out_dim, query_dim, **attention)
 
         # Init
         self.apply(init_weights)
-        for l in self.decoder.layers:
-            l.bias_ih = init_gate(l.bias_ih)
+        for l in range(self.decoder.layer):
+            bias = getattr(self.decoder.layers,'bias_ih_l{}'.format(l))
+            bias = init_gate(bias)
 
     def set_state(self, prev_state, prev_attn):
         ''' Setting up all memory states for beam decoding'''
@@ -82,14 +85,14 @@ class ASR(nn.Module):
         # Attention based decoding
         if self.enable_att:
             # Init (init char = <SOS>, reset all rnn state and cell)
-            self.decoder.init_state(encode_feature)
+            self.decoder.init_state(bs)
             self.attention.reset_mem()
             last_char = self.pre_embed(torch.zeros((bs),dtype=torch.long, device=encode_feature.device))
             att_seq, output_seq = [], []
 
             # Preprocess data for teacher forcing
             if teacher is not None:
-                teacher = self.pre_embed(teacher)
+                teacher = self.embed_drop(self.pre_embed(teacher))
 
             # Decode
             for t in range(decode_step):
@@ -112,7 +115,7 @@ class ASR(nn.Module):
                             else:
                                 cur_prob = cur_char.softmax(dim=-1)
                             sampled_char = Categorical(cur_prob).sample()
-                        last_char = self.pre_embed(sampled_char)
+                        last_char = self.embed_drop(self.pre_embed(sampled_char))
                 else:
                     # Inference stage
                     if (emb_decoder is not None) and emb_decoder.apply_fuse:
@@ -137,100 +140,60 @@ class ASR(nn.Module):
 class Decoder(nn.Module):
     ''' Decoder (a.k.a. Speller in LAS) '''
     # ToDo:　More elegant way to implement decoder 
-    def __init__(self, input_dim, vocab_size, module, dim, layer, dropout, layer_norm):
+    def __init__(self, input_dim, vocab_size, module, dim, layer, dropout):
         super(Decoder, self).__init__()
         self.in_dim = input_dim
         self.layer = layer
         self.dim = dim
         self.dropout = dropout
-        self.layer_norm = layer_norm
 
         # Init 
-        self.module = module+'Cell'
-        self.state_list = []
-        self.enable_cell = False
-        if module  == 'LSTM':
-            self.enable_cell = True
-            self.cell_list = []
-        elif module not in ['LSTM','GRU']:
-            raise NotImplementedError
+        assert module in ['LSTM','GRU'], NotImplementedError
+        self.hidden_state = None
+        self.enable_cell = module=='LSTM'
         
         # Modules
-        module_list = []
-        in_dim = input_dim
-        for i in range(layer):
-            module_list.append(getattr(nn,self.module)(in_dim,dim))
-            in_dim = dim
-        
-        # Regularization
-        if self.layer_norm:
-            self.ln_list = nn.ModuleList([nn.LayerNorm(dim) for l in range(layer)])
-        if self.dropout > 0:
-            self.dp = nn.Dropout(self.dropout)
-
-        self.layers = nn.ModuleList(module_list)
+        self.layers = getattr(nn,module)(input_dim,dim, num_layers=layer, dropout=dropout, batch_first=True)
         self.char_trans = nn.Linear(dim,vocab_size)
+        self.final_dropout = nn.Dropout(dropout)
 
-        
-    def init_state(self, context):
+    def init_state(self, bs):
         ''' Set all hidden states to zeros '''
-        self.state_list = [torch.zeros((context.shape[0],self.dim),device=context.device)]*self.layer
+        device = next(self.parameters()).device
         if self.enable_cell:
-            self.cell_list = [torch.zeros((context.shape[0],self.dim),device=context.device)]*self.layer
-            return self.state_list, self.cell_list
-        return self.state_list
+            self.hidden_state = (torch.zeros((self.layer,bs,self.dim),device=device),
+                                 torch.zeros((self.layer,bs,self.dim),device=device))
+        else:
+            self.hidden_state = torch.zeros((self.layer,bs,self.dim),device=device)
+        return self.get_state()
 
-    def set_state(self, state_list):
+    def set_state(self, hidden_state):
         ''' Set all hidden states/cells, for decoding purpose'''
         device = next(self.parameters()).device
         if self.enable_cell:
-            state_list, cell_list = state_list
-            self.cell_list = [c.to(device) for c in cell_list]
-        self.state_list = [s.to(device) for s in state_list]
+            self.hidden_state = (hidden_state[0].to(device),hidden_state[1].to(device))
+        else:
+            self.hidden_state = hidden_state.to(device)
 
     def get_state(self):
         ''' Return all hidden states/cells, for decoding purpose'''
-        state_list = [s.cpu() for s in self.state_list]
         if self.enable_cell:
-            cell_list = [c.cpu() for c in self.cell_list]
-            return state_list, cell_list
-        return state_list
+            return (self.hidden_state[0].cpu(),self.hidden_state[1].cpu())
+        else:
+            return self.hidden_state.cpu()
 
     def get_query(self):
-        ''' Return state of layer 0 as query for attention '''
-        return self.state_list[0]
-
-    def _get_layer_state(self, layer_idx):
-        ''' Get hidden state of specified layer '''
+        ''' Return state of all layers as query for attention '''
         if self.enable_cell:
-            return (self.state_list[layer_idx],self.cell_list[layer_idx])
+            return self.hidden_state[0].transpose(0,1).reshape(-1,self.dim*self.layer)
         else:
-            return self.state_list[layer_idx]
-
-    def _store_layer_state(self, layer_idx, state):
-        ''' Replace hidden state of specified layer '''
-        if self.enable_cell:
-            self.state_list[layer_idx] = state[0]
-            self.cell_list[layer_idx] = state[1]
-            return state[0]
-        else:
-            self.state_list[layer_idx] = state
-            return state
+            return self.hidden_state.transpose(0,1).reshape(-1,self.dim*self.layer)
 
     def forward(self, x):
-        ''' Manually forward through all layers '''
-        for i, layers in enumerate(self.layers):
-            state = self._get_layer_state(i)
-            x = layers(x,state)
-            x = self._store_layer_state(i,x)
-
-            if self.layer_norm:
-                x = self.ln_list[i](x)
-            if self.dropout > 0:
-                x = self.dp(x)
-
-        char = self.char_trans(x)
-        
+        ''' Decode and transform into vocab '''
+        x, self.hidden_state = self.layers(x.unsqueeze(1),self.hidden_state)
+        x = x.squeeze(1)
+        char = self.char_trans(self.final_dropout(x))
         return char, x
 
 

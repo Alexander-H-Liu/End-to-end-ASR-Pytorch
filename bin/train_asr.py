@@ -40,7 +40,7 @@ class Solver(BaseSolver):
         model_paras = [{'params':self.model.parameters()}]
 
         # Losses
-        self.seq_loss = torch.nn.CrossEntropyLoss(ignore_index=0, reduction='none')
+        self.seq_loss = torch.nn.CrossEntropyLoss(ignore_index=0)
         self.ctc_loss = torch.nn.CTCLoss(blank=0, zero_infinity=False) # Note: zero_infinity=False is unstable?
 
         # Plug-ins
@@ -52,7 +52,7 @@ class Solver(BaseSolver):
             model_paras.append({'params':self.emb_decoder.parameters()})
             self.emb_fuse = self.emb_decoder.apply_fuse
             if self.emb_fuse:
-                self.seq_loss = torch.nn.NLLLoss(ignore_index=0, reduction='none')
+                self.seq_loss = torch.nn.NLLLoss(ignore_index=0)
             self.verbose(self.emb_decoder.create_msg())
 
         # Optimizer
@@ -119,7 +119,7 @@ class Solver(BaseSolver):
                     att_output = fuse_output if self.emb_fuse else att_output
                     att_loss = self.seq_loss(att_output.view(b*t,-1),txt.view(-1))
                     # Sum each uttr and devide by length then mean over batch
-                    att_loss = torch.mean(torch.sum(att_loss.view(b,t),dim=-1)/torch.sum(txt!=0,dim=-1).float())
+                    # att_loss = torch.mean(torch.sum(att_loss.view(b,t),dim=-1)/torch.sum(txt!=0,dim=-1).float())
                     total_loss += att_loss*(1-self.model.ctc_weight)
 
                 self.timer.cnt('fw')
@@ -150,7 +150,8 @@ class Solver(BaseSolver):
                 self.timer.set()
                 if self.step > self.max_step:break
             n_epochs +=1
-
+        self.log.writer.close()
+        
     def validate(self):
         # Eval mode
         self.model.eval()
@@ -174,7 +175,7 @@ class Solver(BaseSolver):
             # Show some example on tensorboard
             if i == len(self.dv_set)//2:
                 for i in range(min(len(txt),self.DEV_N_EXAMPLE)):
-                    if self.step ==0:
+                    if self.step==1:
                         self.write_log('true_text{}'.format(i),self.tokenizer.decode(txt[i].tolist()))
                     if att_output is not None:
                         self.write_log('att_align{}'.format(i),feat_to_fig(att_align[i,0,:,:].cpu().detach()))

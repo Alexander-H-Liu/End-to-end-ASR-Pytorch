@@ -76,7 +76,7 @@ def feat_to_fig(feat):
     return torch.FloatTensor(data),"HWC"
 
 def _save_canvas(data, meta=None):
-    fig, ax = plt.subplots(figsize=(16, 10))
+    fig, ax = plt.subplots(figsize=(16, 8))
     if meta is None:
         ax.imshow(data, aspect="auto", origin="lower")
     else:

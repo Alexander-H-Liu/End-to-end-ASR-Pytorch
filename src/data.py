@@ -5,7 +5,6 @@ from src.audio import create_transform
 from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
 
-DEV_N_JOBS = 2                 # Number of threads used for dev set
 HALF_BATCHSIZE_AUDIO_LEN = 800 # Batch size will be halfed if the longest wavefile surpasses threshold
 # Note: Bucketing may cause random sampling to be biased (less sampled for those length > HALF_BATCHSIZE_AUDIO_LEN )
 HALF_BATCHSIZE_TEXT_LEN = 150
@@ -131,12 +130,11 @@ def load_dataset(n_jobs, use_gpu, pin_memory, ascending, corpus, audio, text):
     # Shuffle/drop applied to training set only
     shuffle = (mode=='train' and not ascending)
     drop_last = shuffle
-    num_workers = max(0,n_jobs-DEV_N_JOBS) if mode=='train' else DEV_N_JOBS
     # Create data loader
     tr_set = DataLoader(tr_set, batch_size=tr_loader_bs, shuffle=shuffle, drop_last=drop_last, collate_fn=collect_tr,
-                        num_workers=num_workers, pin_memory=use_gpu)
+                        num_workers=n_jobs, pin_memory=use_gpu)
     dv_set = DataLoader(dv_set, batch_size=dv_loader_bs, shuffle=False, drop_last=False, collate_fn=collect_dv,
-                        num_workers=DEV_N_JOBS, pin_memory=pin_memory)
+                        num_workers=n_jobs, pin_memory=pin_memory)
     # Messages to show
     data_msg.append('I/O spec.  | Audio feature = {}\t| feature dim = {}\t| Token type = {}\t| Vocab size = {}'\
                     .format(audio['feat_type'],feat_dim,tokenizer.token_type,tokenizer.vocab_size))
@@ -156,7 +154,7 @@ def load_textset(n_jobs, use_gpu, pin_memory, corpus, text):
     tr_set = DataLoader(tr_set, batch_size=tr_loader_bs, shuffle=True, drop_last=True, collate_fn=collect_tr,
                         num_workers=0, pin_memory=use_gpu)
     dv_set = DataLoader(dv_set, batch_size=dv_loader_bs, shuffle=False, drop_last=False, collate_fn=collect_dv,
-                        num_workers=DEV_N_JOBS, pin_memory=pin_memory)
+                        num_workers=0, pin_memory=pin_memory)
 
     # Messages to show
     data_msg.append('I/O spec.  | Token type = {}\t| Vocab size = {}'\

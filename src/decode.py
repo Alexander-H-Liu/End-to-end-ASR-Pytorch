@@ -61,7 +61,7 @@ class BeamDecoder(nn.Module):
         assert audio_feature.shape[0]==1, "Batchsize == 1 is required for beam search"
         batch_size = audio_feature.shape[0]
         device = audio_feature.device
-        dec_state = self.asr.decoder.init_state(audio_feature.cpu())                  # Init zero states
+        dec_state = self.asr.decoder.init_state(batch_size)                           # Init zero states
         max_output_len = int(np.ceil(feature_len.cpu().item()*self.max_len_ratio))    # Max output len set w/ hyper param.
         min_output_len = int(np.ceil(feature_len.cpu().item()*self.min_len_ratio))    # Min output len set w/ hyper param.
         store_att = self.asr.attention.mode == 'loc'                                  # Store attention map if location-aware
