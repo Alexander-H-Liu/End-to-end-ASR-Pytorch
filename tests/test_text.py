@@ -43,7 +43,7 @@ class TestSubwordTextEncoder(unittest.TestCase):
         ids = text_encoder.encode(self.text)
 
         self.assertEqual(5000, text_encoder.vocab_size)
-        self.assertEqual(ids, [2838, 1697, 99, 333, 1])
+        self.assertEqual(ids, [2845, 1699, 99, 333, 1])
 
         decoded = text_encoder.decode(ids)
         self.assertEqual(decoded, self.text)
