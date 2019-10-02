@@ -61,9 +61,9 @@ class CharacterTextEncoder(_BaseTextEncoder):
         vocabs = []
         for t, idx in enumerate(idxs):
             v = self.idx_to_vocab(idx)
-            if v == "<pad>" or (ignore_repeat and t > 0 and idx == vocabs[t-1]):
+            if idx == self.pad_idx or (ignore_repeat and t > 0 and idx == vocabs[t-1]):
                 continue
-            elif v == "<eos>":
+            elif idx == self.eos_idx:
                 break
             else:
                 vocabs.append(v)
@@ -144,9 +144,9 @@ class WordTextEncoder(CharacterTextEncoder):
         vocabs = []
         for t, idx in enumerate(idxs):
             v = self.idx_to_vocab(idx)
-            if v in "<eos>":
+            if idx == self.eos_idx:
                 break
-            elif v == "<pad>" or (ignore_repeat and t > 0 and idx == idxs[t-1]):
+            elif idx == self.pad_idx or (ignore_repeat and t > 0 and idx == idxs[t-1]):
                 continue
             else:
                 vocabs.append(v)
