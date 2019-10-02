@@ -191,6 +191,8 @@ class Decoder(nn.Module):
 
     def forward(self, x):
         ''' Decode and transform into vocab '''
+        if not self.training:
+            self.layers.flatten_parameters()
         x, self.hidden_state = self.layers(x.unsqueeze(1),self.hidden_state)
         x = x.squeeze(1)
         char = self.char_trans(self.final_dropout(x))

@@ -86,7 +86,7 @@ class Solver(BaseSolver):
                 # End of step
                 self.timer.set()
                 if self.step > self.max_step:break
-
+        self.log.close()
     
     def validate(self):
         # Eval mode
@@ -115,7 +115,7 @@ class Solver(BaseSolver):
 
         # Show some example of last batch on tensorboard
         for i in range(min(len(txt),self.DEV_N_EXAMPLE)):
-            if self.step ==0:
+            if self.step ==1:
                 self.write_log('true_text{}'.format(i),self.tokenizer.decode(txt[i].tolist()))
             self.write_log('pred_text{}'.format(i),self.tokenizer.decode(pred[i].argmax(dim=-1).tolist()))
 

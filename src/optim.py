@@ -25,6 +25,9 @@ class Optimizer():
     def get_opt_state_dict(self):
         return self.opt.state_dict()
 
+    def load_opt_state_dict(self,state_dict):
+        self.opt.load_state_dict(state_dict)
+
     def pre_step(self, step):
         if self.lr_scheduler is not None:
             cur_lr = self.lr_scheduler(step)

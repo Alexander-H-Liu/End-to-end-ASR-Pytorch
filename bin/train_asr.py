@@ -150,7 +150,7 @@ class Solver(BaseSolver):
                 self.timer.set()
                 if self.step > self.max_step:break
             n_epochs +=1
-        self.log.writer.close()
+        self.log.close()
         
     def validate(self):
         # Eval mode
