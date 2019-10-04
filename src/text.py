@@ -199,7 +199,7 @@ class BertTextEncoder(_BaseTextEncoder):
 
     @property
     def token_type(self):
-        return "subword"
+        return "bert"
 
     @classmethod
     def load_from_file(cls, vocab_file):
