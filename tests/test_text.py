@@ -87,8 +87,8 @@ class TestBertTextEncoder(unittest.TestCase):
     def _test_encode_decode(self, text_encoder):
         ids = text_encoder.encode(self.text)
 
-        self.assertEqual(30522, text_encoder.vocab_size)
-        self.assertEqual(ids, [4613, 6845, 2003, 2307, 999, 999, 999])
+        self.assertEqual(28639, text_encoder.vocab_size)
+        self.assertEqual(ids, [3616, 5848, 1006, 1310, 2, 2, 2, 1])
 
         decoded = text_encoder.decode(ids)
         self.assertEqual(decoded.upper(), self.text)
