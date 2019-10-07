@@ -140,7 +140,7 @@ class BaseSolver():
             else:
                 self.log.add_scalars(log_name,log_dict,self.step)
 
-    def save_checkpoint(self, f_name, metric, score):
+    def save_checkpoint(self, f_name, metric, score, show_msg=True):
         '''' 
         Ckpt saver
             f_name - <str> the name phnof ckpt file (w/o prefix) to store, overwrite if existed
@@ -160,7 +160,8 @@ class BaseSolver():
             full_dict['emb_decoder'] = self.emb_decoder.state_dict()
 
         torch.save(full_dict, ckpt_path)
-        self.verbose("Saved checkpoint (step = {}, {} = {:.2f}) and status @ {}".\
+        if show_msg:
+            self.verbose("Saved checkpoint (step = {}, {} = {:.2f}) and status @ {}".\
                                        format(human_format(self.step),metric,score,ckpt_path))
 
     def enable_apex(self):

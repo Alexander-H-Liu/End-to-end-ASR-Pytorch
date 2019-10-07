@@ -56,7 +56,7 @@ class Solver(BaseSolver):
         self.load_ckpt()
 
         # Beam decoder
-        self.decoder = BeamDecoder(self.model, self.emb_decoder, **self.config['decode'])
+        self.decoder = BeamDecoder(self.model.cpu(), self.emb_decoder, **self.config['decode'])
         self.verbose(self.decoder.create_msg())
         del self.model
         del self.emb_decoder
@@ -80,10 +80,10 @@ class Solver(BaseSolver):
                     f.write('idx\tbeam\thyp\ttruth\n')
                 self.verbose('Performing instance-wise beam decoding on {} set. (NOTE: use --njobs to speedup)'.format(s))
                 # Minimal function to pickle
-                beam_decode_func = partial(beam_decode, model=copy.deepcopy(self.decoder).to(self.device), device=self.device)
+                beam_decode_func = partial(beam_decode, model=copy.deepcopy(self.decoder), device=self.device)
                 # Parallel beam decode
                 results = Parallel(n_jobs=self.paras.njobs)(delayed(beam_decode_func)(data) for data in tqdm(ds))
-                self.verbose('Results/Beams will be stored at {}/{}.'.format(self.cur_output_path,self.cur_beam_path))
+                self.verbose('Results/Beams will be stored at {} / {}.'.format(self.cur_output_path,self.cur_beam_path))
                 self.write_hyp(results,self.cur_output_path,self.cur_beam_path)
         self.verbose('All done !')
 
@@ -106,6 +106,7 @@ def beam_decode(data, model, device):
     feat_len = feat_len.to(device)
     txt = txt.to(device)
     txt_len = torch.sum(txt!=0,dim=-1)
+    model = model.to(device)
     # Decode
     with torch.no_grad():
         hyps = model(feat, feat_len)

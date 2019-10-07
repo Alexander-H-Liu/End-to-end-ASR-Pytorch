@@ -185,6 +185,7 @@ class Solver(BaseSolver):
                                                                                                        ignore_repeat=True))
         
         # Ckpt if performance improves
+        self.save_checkpoint('latest.pth','wer',dev_wer['att'],show_msg=False)
         for task in ['att','ctc']:
             dev_wer[task] = sum(dev_wer[task])/len(dev_wer[task])
             if dev_wer[task] < self.best_wer[task]:
