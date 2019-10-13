@@ -31,7 +31,7 @@ class Solver(BaseSolver):
                          load_dataset(self.paras.njobs, self.paras.gpu, self.paras.pin_memory, 
                                       self.curriculum>0, **self.config['data'])
         self.verbose(msg)
-
+    
     def set_model(self):
         ''' Setup ASR model and optimizer '''
         # Model
