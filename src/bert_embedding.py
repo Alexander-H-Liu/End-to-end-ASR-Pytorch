@@ -40,7 +40,7 @@ def generate_embedding(bert_model, labels):
     batch_size, time = labels.shape
 
     cls_ids = torch.full(
-        (batch_size, 1), bert_model.bert_text_encoder.cls_idx, dtype=labels.dtype)
+        (batch_size, 1), bert_model.bert_text_encoder.cls_idx, dtype=labels.dtype, device=labels.device)
     bert_labels = torch.cat([cls_ids, labels], 1)
     # replace eos with sep
     eos_idx = bert_model.bert_text_encoder.eos_idx

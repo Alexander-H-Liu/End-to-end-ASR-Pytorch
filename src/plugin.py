@@ -12,18 +12,21 @@ class EmbeddingRegularizer(nn.Module):
         super(EmbeddingRegularizer, self).__init__()
         self.enable = enable
         if enable:
-            pretrained_emb = torch.FloatTensor(load_embedding(tokenizer, src))
-            # pretrained_emb = nn.functional.normalize(pretrained_emb,dim=-1) # ToDo : Check impact on old version
-            vocab_size, emb_dim = pretrained_emb.shape
-            self.dim = emb_dim
-
             if bert is not None:
-                if not isinstance(bert, (tuple, list)) or len(bert) != 2:
-                    raise ValueError("`bert` should be a tuple/list of config and fine-tuned model "
-                                     "such as (\"bert-base-uncased\", \"fine-tuned-model.pth\").")
-                self.emb_table = BertEmbeddingPredictor(
-                    bert[0], text_encoder, bert[1])
+                self.use_bert = True
+                if not isinstance(bert, str):
+                    raise ValueError("`bert` should be a str specifying bert config such as \"bert-base-uncased\".")
+                self.emb_table = BertEmbeddingPredictor(bert, tokenizer, src)
+                vocab_size, emb_dim = self.emb_table.model.bert.embeddings.word_embeddings.weight.shape
+                vocab_size = vocab_size-3 # cls,sep,mask not used
+                self.dim = emb_dim
             else:
+                self.use_bert = False
+                pretrained_emb = torch.FloatTensor(load_embedding(tokenizer, src))
+                # pretrained_emb = nn.functional.normalize(pretrained_emb,dim=-1) # ToDo : Check impact on old version
+                vocab_size, emb_dim = pretrained_emb.shape
+                self.dim = emb_dim
+
                 self.emb_table = nn.Embedding.from_pretrained(
                     pretrained_emb, freeze=freeze, padding_idx=0)
 
@@ -130,8 +133,13 @@ class EmbeddingRegularizer(nn.Module):
         if return_loss:
             # Compute embedding loss
             b, t = label.shape
-
-            y_emb = self.emb_table(label)
+            # Retrieve embedding
+            if self.use_bert:
+                with torch.no_grad():
+                    y_emb = self.emb_table(label).contiguous()
+            else:
+                y_emb = self.emb_table(label)
+            # Regression loss on embedding
             if self.distance == 'CosEmb':
                 loss = self.measurement(
                     x_emb.view(-1, self.dim), y_emb.view(-1, self.dim), torch.ones(1).to(dec_state.device))
