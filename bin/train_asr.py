@@ -108,7 +108,6 @@ class Solver(BaseSolver):
                         ctc_loss = self.ctc_loss(ctc_output.transpose(0,1), 
                                                  txt.to_sparse().values().to(device='cpu',dtype=torch.int32),
                                                  [ctc_output.shape[1]]*len(ctc_output),
-                                                 #[int(encode_len.max()) for _ in encode_len],
                                                  txt_len.cpu().tolist())
                     else:
                         ctc_loss = self.ctc_loss(ctc_output.transpose(0,1), txt, encode_len, txt_len)
@@ -118,8 +117,6 @@ class Solver(BaseSolver):
                     b,t,_ = att_output.shape
                     att_output = fuse_output if self.emb_fuse else att_output
                     att_loss = self.seq_loss(att_output.view(b*t,-1),txt.view(-1))
-                    # Sum each uttr and devide by length then mean over batch
-                    # att_loss = torch.mean(torch.sum(att_loss.view(b,t),dim=-1)/torch.sum(txt!=0,dim=-1).float())
                     total_loss += att_loss*(1-self.model.ctc_weight)
 
                 self.timer.cnt('fw')

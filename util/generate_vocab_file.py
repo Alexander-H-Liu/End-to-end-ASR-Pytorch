@@ -52,7 +52,7 @@ if __name__ == "__main__":
         "--mode", choices=["character", "word", "subword"], required=True)
     parser.add_argument("--output_file", required=True)
     parser.add_argument("--vocab_size", type=int, default=5000)
-    parser.add_argument("--character_coverage", type=float, default=0.9995)
+    parser.add_argument("--character_coverage", type=float, default=1)
 
     args = parser.parse_args()
 
