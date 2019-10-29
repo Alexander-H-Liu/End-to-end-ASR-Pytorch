@@ -45,7 +45,7 @@ Options under this category are all data-related.
     |Parameter | Description | Note |
     |----------|-------------|------|
     | mode | `str` text unit for encoding sentences | Available: `character`/`subword`/`word`|
-    | vocab_file | `src` path to file containing vocabulary set||
+    | vocab_file | `src` path to file containing vocabulary set| Please use [generate_vocab_file.py](../util/generate_vocab_file.py) to generate it|
 
 ### Hparas
 
@@ -113,7 +113,7 @@ The following mechanisms are our proposed methods, can be activate by inserting 
     | Parameter    | Description  | Note |
     |--------------|--------------|------|
     | enable       | `bool` to enable word embedding regularization or fused decoding on ASR | |
-    | src          | `str` path to pre-trained embedding table or BERT model| |
+    | src          | `str` path to pre-trained embedding table or BERT model| The `bert-base-uncased` model fine-tuned on librispeech text data is available [here]() |
     | distance     | `str` measurement of distance between word embedding and model output | Available: `CosEmb`/`MSE`(untested) |
     | weight       | `float` $\lambda$ in paper  | |
     | fuse         | `float` $\lambda_f$ in paper| |

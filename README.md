@@ -44,13 +44,13 @@ Feel free to use/modify them, any bug report or improvement suggestion will be a
 
 *You may use the text encoders provided at [`tests/sample_data/`](tests/sample_data/) and skip this step.*
 
-The subword model is trained with `sentencepiece`. As for character/word model, you have to generate the vocabulary file containing the vocabulary line by line. You may also use `util/generate_vocab_file.py` so that you only have to prepare a text file, which contains all texts you want to use for generating the vocabulary file or subword model.
+The subword model is trained with `sentencepiece`. As for character/word model, you have to generate the vocabulary file containing the vocabulary line by line. You may also use `util/generate_vocab_file.py` so that you only have to prepare a text file, which contains all texts you want to use for generating the vocabulary file or subword model. Please update `data.text.*` field in the config file if you want to change the mode or vocabulary file. For subword model, use the one ended with `.model` as `vocab_file`.
 
 ```shell=zsh
 python3 util/generate_vocab_file.py --input_file TEXT_FILE \
-                                      --output_file OUTPUT_FILE \
-                                      --vocab_size VOCAB_SIZE \
-                                      --mode MODE
+                                    --output_file OUTPUT_FILE \
+                                    --vocab_size VOCAB_SIZE \
+                                    --mode MODE
 ```
 For more details, please refer to `python3 util/generate_vocab_file.py -h`.
 
