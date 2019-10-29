@@ -1,11 +1,11 @@
 data:
   corpus:                                 
     name: 'Librispeech'                   # Specify corpus
-    path: '/path/to/LibriSpeech'          # Path to raw LibriSpeech dataset
+    path: 'data/LibriSpeech'          # Path to raw LibriSpeech dataset
     train_split: ['train-clean-100','train-clean-360','train-other-500'] # Name of data splits to be used as training set
     dev_split: ['dev-clean']              # Name of data splits to be used as validation set
     bucketing: True                       # Enable/Disable bucketing 
-    batch_size: 24
+    batch_size: 32
   audio:                                  # Attributes of audio feature
     feat_type: 'fbank'
     feat_dim:  40
@@ -29,14 +29,15 @@ hparas:                                   # Experiment hyper-parameters
   lr: 1.0
   eps: 0.00000001                         # 1e-8
   lr_scheduler: 'fixed'                   # 'fixed'/'warmup'
-  
+  curriculum: 0
+
 model:                                    # Model architecture
   ctc_weight: 0.0                         # Weight for CTC loss
   encoder:
     vgg: True                             # 4x reduction on time feature extraction
     module: 'LSTM'                        # 'LSTM'/'GRU'/'Transformer'
     bidirection: True
-    dim: [320,320,320,320,320]
+    dim: [512,512,512,512,512]
     dropout: [0,0,0,0,0]
     layer_norm: [False,False,False,False,False]
     proj: [True,True,True,True,True]      # Linear projection + Tanh after each rnn layer
@@ -44,7 +45,7 @@ model:                                    # Model architecture
     sample_style: 'drop'                  # 'drop'/'concat'
   attention:
     mode: 'loc'                           # 'dot'/'loc'
-    dim: 300
+    dim: 512
     num_head: 1
     v_proj: False                         # if False and num_head>1, encoder state will be duplicated for each head
     temperature: 1                        # scaling factor for attention
@@ -52,7 +53,6 @@ model:                                    # Model architecture
     loc_kernel_num: 10                    # just for mode=='loc'
   decoder:
     module: 'LSTM'                        # 'LSTM'/'GRU'/'Transformer'
-    dim: 512
+    dim: 1024
     layer: 1
     dropout: 0
-    layer_norm: False

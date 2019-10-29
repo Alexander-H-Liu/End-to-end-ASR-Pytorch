@@ -36,7 +36,7 @@ parser.add_argument('--lm', action='store_true',
                     help='Option for training RNNLM.')
 # Following features in development.
 parser.add_argument('--amp', action='store_true', help='Option to enable AMP.')
-parser.add_argument('--reserve_gpu', default=0, type=float,
+parser.add_argument('--reserve-gpu', default=0, type=float,
                     help='Option to reserve GPU ram for training.')
 parser.add_argument('--jit', action='store_true',
                     help='Option for enabling jit in pytorch. (feature in development)')
