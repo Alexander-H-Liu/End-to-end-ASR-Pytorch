@@ -10,7 +10,7 @@ Feel free to use/modify them, any bug report or improvement suggestion will be a
 ## Highlights
 
 <p align="center">
-  <img src="log/demo.png" width="596" height="200">
+  <img src="tests/sample_data/demo.png" width="760" height="400">
 </p>
 
 - Feature Extraction
@@ -28,7 +28,7 @@ Feel free to use/modify them, any bug report or improvement suggestion will be a
     - RNN language model training and joint decoding for ASR<sup>[6](#Reference)</sup>
     - Joint CTC-attention based decoding<sup>[6](#Reference)</sup>
 
-*You may checkout some example log files with TensorBoard by downloading them from [`log/log_url.txt`](log/log_url.txt)*
+*You may checkout some example log files with TensorBoard by downloading them from [`coming soon`]()*
 
 ## Dependencies
 
@@ -140,6 +140,7 @@ Most of the options work similar to training phase except the followings:
 - Pure CTC training
 - Greedy decoding
 - Customized dataset
+- Util. scripts
 - Finish CLM migration and reference
 - Store preprocessed dataset on RAM
 
@@ -166,5 +167,14 @@ Most of the options work similar to training phase except the followings:
   booktitle={Acoustics, Speech and Signal Processing (ICASSP)},
   year={2019},
   organization={IEEE}
+}
+
+@misc{alex2019sequencetosequence,
+    title={Sequence-to-sequence Automatic Speech Recognition with Word Embedding Regularization and Fused Decoding},
+    author={Alexander H. Liu and Tzu-Wei Sung and Shun-Po Chuang and Hung-yi Lee and Lin-shan Lee},
+    year={2019},
+    eprint={1910.12740},
+    archivePrefix={arXiv},
+    primaryClass={cs.CL}
 }
 ```

@@ -113,7 +113,7 @@ The following mechanisms are our proposed methods, can be activate by inserting 
     | Parameter    | Description  | Note |
     |--------------|--------------|------|
     | enable       | `bool` to enable word embedding regularization or fused decoding on ASR | |
-    | src          | `str` path to pre-trained embedding table or BERT model| The `bert-base-uncased` model fine-tuned on librispeech text data is available [here]() |
+    | src          | `str` path to pre-trained embedding table or BERT model| The `bert-base-uncased` model fine-tuned on librispeech text data is available [here](https://drive.google.com/file/d/1Y1q5cH3yfuzMxQArR7WJ4gQD1GN7xrPh/view?usp=sharing) |
     | distance     | `str` measurement of distance between word embedding and model output | Available: `CosEmb`/`MSE`(untested) |
     | weight       | `float` $\lambda$ in paper  | |
     | fuse         | `float` $\lambda_f$ in paper| |
