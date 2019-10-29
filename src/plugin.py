@@ -15,14 +15,16 @@ class EmbeddingRegularizer(nn.Module):
             if bert is not None:
                 self.use_bert = True
                 if not isinstance(bert, str):
-                    raise ValueError("`bert` should be a str specifying bert config such as \"bert-base-uncased\".")
+                    raise ValueError(
+                        "`bert` should be a str specifying bert config such as \"bert-base-uncased\".")
                 self.emb_table = BertEmbeddingPredictor(bert, tokenizer, src)
                 vocab_size, emb_dim = self.emb_table.model.bert.embeddings.word_embeddings.weight.shape
-                vocab_size = vocab_size-3 # cls,sep,mask not used
+                vocab_size = vocab_size-3  # cls,sep,mask not used
                 self.dim = emb_dim
             else:
                 self.use_bert = False
-                pretrained_emb = torch.FloatTensor(load_embedding(tokenizer, src))
+                pretrained_emb = torch.FloatTensor(
+                    load_embedding(tokenizer, src))
                 # pretrained_emb = nn.functional.normalize(pretrained_emb,dim=-1) # ToDo : Check impact on old version
                 vocab_size, emb_dim = pretrained_emb.shape
                 self.dim = emb_dim

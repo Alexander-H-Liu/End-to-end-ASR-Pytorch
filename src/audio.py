@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchaudio
 
+
 class CMVN(torch.jit.ScriptModule):
 
     __constants__ = ["mode", "dim", "eps"]

@@ -5,7 +5,8 @@ Reference: https://www.tensorflow.org/datasets/api_docs/python/tfds/features/tex
 import abc
 
 BERT_FIRST_IDX = 997  # Replacing the 2 tokens right before english starts as <eos> & <unk>
-BERT_LAST_IDX = 29635 # Drop rest of tokens
+BERT_LAST_IDX = 29635  # Drop rest of tokens
+
 
 class _BaseTextEncoder(abc.ABC):
     @abc.abstractmethod
@@ -175,7 +176,7 @@ class BertTextEncoder(_BaseTextEncoder):
         for idx in self._tokenizer.encode(s):
             try:
                 r_idx = idx-BERT_FIRST_IDX
-                assert r_idx>0
+                assert r_idx > 0
                 reduced_idx.append(r_idx)
             except:
                 reduced_idx.append(self.unk_idx)
@@ -190,7 +191,8 @@ class BertTextEncoder(_BaseTextEncoder):
             elif idx == self.pad_idx or (ignore_repeat and t > 0 and idx == idxs[t-1]):
                 continue
             else:
-                crop_idx.append(idx+BERT_FIRST_IDX) # Shift to correct idx for bert tokenizer
+                # Shift to correct idx for bert tokenizer
+                crop_idx.append(idx+BERT_FIRST_IDX)
         return self._tokenizer.decode(crop_idx)
 
     @property
