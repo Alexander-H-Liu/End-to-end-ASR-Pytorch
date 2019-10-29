@@ -10,7 +10,7 @@ Feel free to use/modify them, any bug report or improvement suggestion will be a
 ## Highlights
 
 <p align="center">
-  <img src="tests/sample_data/demo.png" width="380" height="200">
+  <img src="tests/sample_data/demo.png" width="570" height="300">
 </p>
 
 - Feature Extraction
