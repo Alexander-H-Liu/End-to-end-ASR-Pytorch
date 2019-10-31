@@ -209,8 +209,7 @@ class Solver(BaseSolver):
             dev_wer[task] = sum(dev_wer[task])/len(dev_wer[task])
             if dev_wer[task] < self.best_wer[task]:
                 self.best_wer[task] = dev_wer[task]
-                self.save_checkpoint('best_{}.pth'.format(
-                    task), 'wer', dev_wer[task])
+                self.save_checkpoint('best_{}.pth'.format(task), 'wer', dev_wer[task])
             self.write_log('wer', {'dv_'+task: dev_wer[task]})
 
         # Resume training

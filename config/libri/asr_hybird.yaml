@@ -31,7 +31,7 @@ hparas:                                   # Experiment hyper-parameters
   lr_scheduler: 'fixed'                   # 'fixed'/'warmup'
   
 model:                                    # Model architecture
-  ctc_weight: 0.0                         # Weight for CTC loss
+  ctc_weight: 0.5                         # Weight for CTC loss
   encoder:
     vgg: True                             # 4x reduction on time feature extraction
     module: 'LSTM'                        # 'LSTM'/'GRU'/'Transformer'
