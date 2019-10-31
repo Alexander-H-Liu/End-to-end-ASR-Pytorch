@@ -1,7 +1,7 @@
 data:
   corpus:                                 
     name: 'Librispeech'                   # Specify corpus
-    path: '/path/to/LibriSpeech'          # Path to raw LibriSpeech dataset
+    path: 'data/LibriSpeech'          # Path to raw LibriSpeech dataset
     train_split: ['train-clean-100','train-clean-360','train-other-500'] # Name of data splits to be used as training set
     dev_split: ['dev-clean']              # Name of data splits to be used as validation set
     bucketing: True                       # Enable/Disable bucketing 
@@ -29,7 +29,8 @@ hparas:                                   # Experiment hyper-parameters
   lr: 1.0
   eps: 0.00000001                         # 1e-8
   lr_scheduler: 'fixed'                   # 'fixed'/'warmup'
-  
+  curriculum: 0
+
 model:                                    # Model architecture
   ctc_weight: 0.0                         # Weight for CTC loss
   encoder:
@@ -55,4 +56,3 @@ model:                                    # Model architecture
     dim: 1024
     layer: 2
     dropout: 0
-    layer_norm: False

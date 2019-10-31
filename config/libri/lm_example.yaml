@@ -2,7 +2,7 @@ data:
   corpus:                                 # Pass to dataloader
     # The following depends on corpus
     name: 'Librispeech'                   # Specify corpus
-    path: '../data/LibriSpeech'
+    path: 'data/LibriSpeech'
     train_split: ['librispeech-lm-norm.txt'] # Official LM src from LibriSpeech
     dev_split: ['dev-clean']
     bucketing: True

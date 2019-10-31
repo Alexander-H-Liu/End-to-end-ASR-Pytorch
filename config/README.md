@@ -62,6 +62,7 @@ Options under this category are all training-related.
 | lr            | `float` learning rate for optimizer |  |
 | eps           | `float` epsilon for optimizer |  |
 | lr_scheduler  | `str` learning rate scheduler | Available: `fixed`/`warmup`|
+| curriculum    | `int` numbers of epochs to perform curriculum learning (short uttr. first) | |
 
 ### Model
 
@@ -101,7 +102,6 @@ Options under this category are all training-related.
     | dim          | `int` number of cells in decoder| |
     | layer        | `int` number of layers in decoder | |
     | dropout      | `float` of dropout probability | |
-    | layer_norm   | `bool` to enable LayerNorm | Not recommended |
   
 
 ### Additional Plug-ins
