@@ -25,10 +25,10 @@ hparas:                                   # Experiment hyper-parameters
   tf_start: 1.0
   tf_end: 1.0
   tf_step: 500000
-  optimizer: 'Adadelta'
-  lr: 1.0
+  optimizer: 'Adam'
+  lr: 0.001
   eps: 0.00000001                         # 1e-8
-  lr_scheduler: 'fixed'                   # 'fixed'/'warmup'
+  lr_scheduler: 'spec-aug-double'         # 'fixed'/'warmup'
   curriculum: 0
 
 model:                                    # Model architecture
