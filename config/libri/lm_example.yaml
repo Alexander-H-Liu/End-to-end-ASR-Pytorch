@@ -9,7 +9,7 @@ data:
     batch_size: 32
   text:
     mode: 'subword'                     # 'character'/'word'/'subword'
-    vocab_file: 'tests/sample_data/subword-460.model'
+    vocab_file: 'tests/sample_data/subword-16k.model'
 
 hparas:                                   # Experiment hyper-parameters
   valid_step: 10000

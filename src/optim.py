@@ -24,11 +24,13 @@ class Optimizer():
         elif lr_scheduler == 'spec-aug-basic':
             # Scheduler from https://arxiv.org/pdf/1904.08779.pdf
             self.lr_scheduler = partial(speech_aug_scheduler, s_r=500,
-                                        s_i=20000, s_f=80000, peak_lr=lr))
+                                        s_i=20000, s_f=80000, peak_lr=lr)
+            self.opt = opt(parameters, lr=lr, eps=eps)
         elif lr_scheduler == 'spec-aug-double':
             # Scheduler from https://arxiv.org/pdf/1904.08779.pdf
             self.lr_scheduler = partial(speech_aug_scheduler, s_r=1000,
-                                        s_i=40000, s_f=160000, peak_lr=lr))
+                                        s_i=40000, s_f=160000, peak_lr=lr)
+            self.opt = opt(parameters, lr=lr, eps=eps)
         else:
             self.lr_scheduler = None
             self.opt = opt(parameters, lr=lr, eps=eps)  # ToDo: 1e-8 better?
@@ -51,7 +53,7 @@ class Optimizer():
         self.opt.step()
 
     def create_msg(self):
-        return ['Optim.spec.| Algo. = {}\t| Lr = {}\t (schedule = {})| Scheduled sampling = {}'
+        return ['Optim.spec.| Algo. = {}\t| Lr = {}\t (Scheduler = {})| Scheduled sampling = {}'
                 .format(self.opt_type, self.init_lr, self.sch_type, self.tf_type)]
 
 def speech_aug_scheduler(step, s_r, s_i, s_f, peak_lr):

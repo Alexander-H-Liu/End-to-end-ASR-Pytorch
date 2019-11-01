@@ -34,9 +34,9 @@ class LibriDataset(Dataset):
         # List all wave files
         file_list = []
         for s in split:
-            file_list += list(Path(join(path, s)).rglob("*.flac"))
-        assert len(file_list) > 0, "No data found @ {}".format(path)
-
+            split_list = list(Path(join(path, s)).rglob("*.flac"))
+            assert len(split_list) > 0, "No data found @ {}".format(join(path,s))
+            file_list += split_list
         # Read text
         text = Parallel(n_jobs=READ_FILE_THREADS)(
             delayed(read_text)(str(f)) for f in file_list)
