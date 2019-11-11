@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torch.distributions.categorical import Categorical
 
 from src.util import init_weights, init_gate
-from src.module import VGGExtractor, RNNLayer, ScaleDotAttention, LocationAwareAttention
+from src.module import VGGExtractor, CNNExtractor, RNNLayer, ScaleDotAttention, LocationAwareAttention
 
 
 class ASR(nn.Module):

@@ -74,7 +74,7 @@ class CNNExtractor(nn.Module):
         self.out_dim = out_dim
         self.extractor = nn.Sequential(
             nn.Conv1d(input_dim, out_dim, 4, stride=2, padding=1),
-            nn.Conv1d(input_dim, out_dim, 4, stride=2, padding=1),
+            nn.Conv1d(out_dim, out_dim, 4, stride=2, padding=1),
         )
 
     def forward(self, feature, feat_len):
