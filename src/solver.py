@@ -102,20 +102,21 @@ class BaseSolver():
             # if self.amp:
             #    amp.load_state_dict(ckpt['amp'])
             # Load task-dependent items
+            metric = "None"
+            score = 0.0
+            for k, v in ckpt.items():
+                if type(v) is float:
+                    metric, score = k, v
             if self.mode == 'train':
                 self.step = ckpt['global_step']
                 self.optimizer.load_opt_state_dict(ckpt['optimizer'])
-                self.verbose('Load ckpt from {}, restarting at step {}'.format(
-                    self.paras.load, self.step))
+                self.verbose('Load ckpt from {}, restarting at step {} (recorded {} = {:.2f} %)'.format(
+                              self.paras.load, self.step, metric, score))
             else:
-                for k, v in ckpt.items():
-                    if type(v) is float:
-                        metric, score = k, v
                 self.model.eval()
                 if self.emb_decoder is not None:
                     self.emb_decoder.eval()
-                self.verbose('Evaluation target = {} (recorded {} = {:.2f} %)'.format(
-                    self.paras.load, metric, score))
+                self.verbose('Evaluation target = {} (recorded {} = {:.2f} %)'.format(self.paras.load, metric, score))
 
     def verbose(self, msg):
         ''' Verbose function for print information to stdout'''

@@ -83,26 +83,26 @@ class CTCPrefixScore():
             r[0, 0, :] = self.x[0, candidates]    # if g = <sos>
 
         psi = r[start-1, 0, :]
-
-        phi = np.logaddexp(r_prev[:, 0], r_prev[:, 1])
+        # Phi = (prev_nonblank,prev_blank)
+        sum_prev = np.logaddexp(r_prev[:, 0], r_prev[:, 1])
+        phi = np.repeat(sum_prev[..., None],odim,axis=-1)
+        # Handle edge case : last tok of prefix in candidates
+        if  prefix_length>0 and last_char in candidates:
+            phi[:,candidates.index(last_char)] = r_prev[:,1]
 
         for t in range(start, self.input_length):
             # prev_blank
-            prev_blank = np.full((odim), r_prev[t-1, 1], dtype=np.float32)
-
+            # prev_blank = np.full((odim), r_prev[t-1, 1], dtype=np.float32)
             # prev_nonblank
-            prev_nonblank = np.full((odim), r_prev[t-1, 0], dtype=np.float32)
-            if last_char in candidates:
-                prev_nonblank[candidates.index(last_char)] = self.logzero
-
-            phi = np.logaddexp(prev_nonblank, prev_blank)
-            # P(h|current step is non-blank) = [ P(prev. step = y) + P()]*P(c)
-            r[t, 0, :] = np.logaddexp(
-                r[t-1, 0, :], phi) + self.x[t, candidates]
+            # prev_nonblank = np.full((odim), r_prev[t-1, 0], dtype=np.float32)
+            # phi = np.logaddexp(prev_nonblank, prev_blank)
+            # P(h|current step is non-blank) =  P(prev. step = y)*P(c)
+            r[t, 0, :] = np.logaddexp( r[t-1, 0, :], phi[t-1]) + self.x[t, candidates]
             # P(h|current step is blank) = [P(prev. step is blank) + P(prev. step is non-blank)]*P(now=blank)
-            r[t, 1, :] = np.logaddexp(
-                r[t-1, 1, :], r[t-1, 0, :]) + self.x[t, self.blank]
-            psi = np.logaddexp(psi, phi+self.x[t, candidates])
+            r[t, 1, :] = np.logaddexp( r[t-1, 1, :], r[t-1, 0, :]) + self.x[t, self.blank]
+            psi = np.logaddexp(psi, phi[t-1,]+self.x[t, candidates])
 
-        psi[self.eos] = np.logaddexp(r_prev[-1, 0], r_prev[-1, 1])
+        # P(end of sentence) = P(g)
+        if self.eos in candidates:
+            psi[candidates.index(self.eos)] = sum_prev[-1]
         return psi, np.rollaxis(r, 2)

@@ -69,6 +69,7 @@ class BeamDecoder(nn.Module):
         device = audio_feature.device
         dec_state = self.asr.decoder.init_state(
             batch_size)                           # Init zero states
+        self.asr.attention.reset_mem()            # Flush attention mem
         # Max output len set w/ hyper param.
         max_output_len = int(
             np.ceil(feature_len.cpu().item()*self.max_len_ratio))
@@ -116,30 +117,25 @@ class BeamDecoder(nn.Module):
 
                 # Embedding fusion (output shape 1xV)
                 if self.apply_emb:
-                    _, cur_prob = self.emb_decoder(
-                        d_state, cur_prob, return_loss=False)
+                    _, cur_prob = self.emb_decoder( d_state, cur_prob, return_loss=False)
                 else:
                     cur_prob = F.log_softmax(cur_prob, dim=-1)
 
                 # Perform CTC prefix scoring on limited candidates (else OOM easily)
                 if self.apply_ctc:
                     # TODO : Check the performance drop for computing part of candidates only
-                    _, ctc_candidates = cur_prob.squeeze(
-                        0).topk(self.ctc_beam_size, dim=-1)
+                    _, ctc_candidates = cur_prob.squeeze(0).topk(self.ctc_beam_size, dim=-1)
                     candidates = ctc_candidates.cpu().tolist()
                     ctc_prob, ctc_state = ctc_prefix.cheap_compute(
                         hypothesis.outIndex, prev_ctc_state, candidates)
                     # TODO : study why ctc_char (slightly) > 0 sometimes
-                    ctc_char = torch.FloatTensor(
-                        ctc_prob - hypothesis.ctc_prob).to(device)
+                    ctc_char = torch.FloatTensor(ctc_prob - hypothesis.ctc_prob).to(device)
 
                     # Combine CTC score and Attention score (HACK: focus on candidates, block others)
-                    hack_ctc_char = torch.zeros_like(
-                        cur_prob).data.fill_(LOG_ZERO)
+                    hack_ctc_char = torch.zeros_like(cur_prob).data.fill_(LOG_ZERO)
                     for idx, char in enumerate(candidates):
                         hack_ctc_char[0, char] = ctc_char[idx]
-                    cur_prob = (1-self.ctc_w)*cur_prob + \
-                        self.ctc_w*hack_ctc_char  # ctc_char#
+                    cur_prob = (1-self.ctc_w)*cur_prob + self.ctc_w*hack_ctc_char  # ctc_char
                     cur_prob[0, 0] = LOG_ZERO  # Hack to ignore <sos>
 
                 # Joint RNN-LM decoding
@@ -230,7 +226,7 @@ class Hypothesis:
             idxes.append(topi[i].cpu())
             scores.append(topv[i].cpu())
             if ctc_state is not None:
-                #idx = topi[0][i].item() #
+                # ToDo: Handle out-of-candidate case.
                 idx = ctc_candidates.index(topi[i].item())
                 ctc_s = ctc_state[idx, :, :]
                 ctc_p = ctc_prob[idx]

@@ -72,7 +72,7 @@ Options under this category are all training-related.
 
     | Parameter    | Description  | Note |
     |--------------|--------------|------|
-    | vgg          | `bool` to employ CNN based encoder before RNN | [paper](https://arxiv.org/pdf/1706.02737.pdf) |
+    | prenet       | `str` to employ VGG/CNN based encoder before RNN | [`vgg`](https://arxiv.org/pdf/1706.02737.pdf)/`cnn` |
     | module       | `str` the name of recurrent unit for encoder RNN layer | Only `LSTM` was tested |
     | bidirection  | `bool` to enable bidirectional RNN over input sequence | |
     | dim          | `list` of number of cells for each RNN layer (per direction)| |

@@ -62,8 +62,31 @@ class VGGExtractor(nn.Module):
         # BSx128xT/4xD/4 -> BSxT/4x128xD/4
         feature = feature.transpose(1, 2)
         #  BS x T/4 x 128 x D/4 -> BS x T/4 x 32D
-        feature = feature.contiguous().view(
-            feature.shape[0], feature.shape[1], self.out_dim)
+        feature = feature.contiguous().view(feature.shape[0], feature.shape[1], self.out_dim)
+        return feature, feat_len
+
+class CNNExtractor(nn.Module):
+    ''' A simple 2-layer CNN extractor for acoustic feature down-sampling'''
+
+    def __init__(self, input_dim, out_dim):
+        super(CNNExtractor, self).__init__()
+
+        self.out_dim = out_dim
+        self.extractor = nn.Sequential(
+            nn.Conv1d(input_dim, out_dim, 4, stride=2, padding=1),
+            nn.Conv1d(out_dim, out_dim, 4, stride=2, padding=1),
+        )
+
+    def forward(self, feature, feat_len):
+        # Fixed down-sample ratio
+        feat_len = feat_len//4
+        # Channel first
+        feature = feature.transpose(1,2) 
+        # Foward
+        feature = self.extractor(feature)
+        # Channel last
+        feature = feature.transpose(1, 2)
+
         return feature, feat_len
 
 
@@ -150,7 +173,7 @@ class BaseAttention(nn.Module):
         self.mask = None
         self.k_len = None
 
-    def set_mem(self):
+    def set_mem(self, prev_att):
         pass
 
     def compute_mask(self, k, k_len):

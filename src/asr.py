@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torch.distributions.categorical import Categorical
 
 from src.util import init_weights, init_gate
-from src.module import VGGExtractor, RNNLayer, ScaleDotAttention, LocationAwareAttention
+from src.module import VGGExtractor, CNNExtractor, RNNLayer, ScaleDotAttention, LocationAwareAttention
 
 
 class ASR(nn.Module):
@@ -38,10 +38,10 @@ class ASR(nn.Module):
                 self.encoder.out_dim, query_dim, **attention)
 
         # Init
-        self.apply(init_weights)
-        for l in range(self.decoder.layer):
-            bias = getattr(self.decoder.layers, 'bias_ih_l{}'.format(l))
-            bias = init_gate(bias)
+        # self.apply(init_weights)
+        # for l in range(self.decoder.layer):
+        #     bias = getattr(self.decoder.layers, 'bias_ih_l{}'.format(l))
+        #     bias = init_gate(bias)
 
     def set_state(self, prev_state, prev_attn):
         ''' Setting up all memory states for beam decoding'''
@@ -55,7 +55,10 @@ class ASR(nn.Module):
             self.encoder.sample_rate))
         if self.encoder.vgg:
             msg.append(
-                '           | VCC Extractor w/ time downsampling rate = 4 in encoder enabled.')
+                '           | VGG Extractor w/ time downsampling rate = 4 in encoder enabled.')
+        if self.encoder.cnn:
+            msg.append(
+                '           | CNN Extractor w/ time downsampling rate = 4 in encoder enabled.')
         if self.enable_ctc:
             msg.append('           | CTC training on encoder enabled ( lambda = {}).'.format(
                 self.ctc_weight))
@@ -312,11 +315,12 @@ class Encoder(nn.Module):
     ''' Encoder (a.k.a. Listener in LAS)
         Encodes acoustic feature to latent representation, see config file for more details.'''
 
-    def __init__(self, input_size, vgg, module, bidirection, dim, dropout, layer_norm, proj, sample_rate, sample_style):
+    def __init__(self, input_size, prenet, module, bidirection, dim, dropout, layer_norm, proj, sample_rate, sample_style):
         super(Encoder, self).__init__()
 
         # Hyper-parameters checking
-        self.vgg = vgg
+        self.vgg = prenet == 'vgg'
+        self.cnn = prenet == 'cnn'
         self.sample_rate = 1
         assert len(sample_rate) == len(dropout), 'Number of layer mismatch'
         assert len(dropout) == len(dim), 'Number of layer mismatch'
@@ -327,12 +331,19 @@ class Encoder(nn.Module):
         module_list = []
         input_dim = input_size
 
-        if vgg:
+        # Prenet on audio feature
+        if self.vgg:
             vgg_extractor = VGGExtractor(input_size)
             module_list.append(vgg_extractor)
             input_dim = vgg_extractor.out_dim
             self.sample_rate = self.sample_rate*4
+        if self.cnn:
+            cnn_extractor = CNNExtractor(input_size, out_dim=dim[0])
+            module_list.append(cnn_extractor)
+            input_dim = cnn_extractor.out_dim
+            self.sample_rate = self.sample_rate*4
 
+        # Recurrent encoder
         if module in ['LSTM', 'GRU']:
             for l in range(num_layers):
                 module_list.append(RNNLayer(input_dim, module, dim[l], bidirection, dropout[l], layer_norm[l],
@@ -342,6 +353,7 @@ class Encoder(nn.Module):
         else:
             raise NotImplementedError
 
+        # Build model
         self.in_dim = input_size
         self.out_dim = input_dim
         self.layers = nn.ModuleList(module_list)

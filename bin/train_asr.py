@@ -184,8 +184,7 @@ class Solver(BaseSolver):
                                emb_decoder=self.emb_decoder)
 
             dev_wer['att'].append(cal_er(self.tokenizer, att_output, txt))
-            dev_wer['ctc'].append(
-                cal_er(self.tokenizer, ctc_output, txt, ctc=True))
+            dev_wer['ctc'].append(cal_er(self.tokenizer, ctc_output, txt, ctc=True))
 
             # Show some example on tensorboard
             if i == len(self.dv_set)//2:
@@ -203,15 +202,13 @@ class Solver(BaseSolver):
                                                                                      ignore_repeat=True))
 
         # Ckpt if performance improves
-        self.save_checkpoint('latest.pth', 'wer',
-                             dev_wer['att'], show_msg=False)
         for task in ['att', 'ctc']:
             dev_wer[task] = sum(dev_wer[task])/len(dev_wer[task])
             if dev_wer[task] < self.best_wer[task]:
                 self.best_wer[task] = dev_wer[task]
-                self.save_checkpoint('best_{}.pth'.format(
-                    task), 'wer', dev_wer[task])
+                self.save_checkpoint('best_{}.pth'.format(task), 'wer', dev_wer[task])
             self.write_log('wer', {'dv_'+task: dev_wer[task]})
+        self.save_checkpoint('latest.pth', 'wer', dev_wer['att'], show_msg=False)
 
         # Resume training
         self.model.train()

@@ -137,7 +137,7 @@ Most of the options work similar to training phase except the followings:
 ## ToDo
 
 - Provide examples
-- Pure CTC training
+- Pure CTC training / CTC beam decode bug (out-of-candidate)
 - Greedy decoding
 - Customized dataset
 - Util. scripts
