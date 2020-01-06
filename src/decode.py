@@ -69,6 +69,7 @@ class BeamDecoder(nn.Module):
         device = audio_feature.device
         dec_state = self.asr.decoder.init_state(
             batch_size)                           # Init zero states
+        self.asr.attention.reset_mem()            # Flush attention mem
         # Max output len set w/ hyper param.
         max_output_len = int(
             np.ceil(feature_len.cpu().item()*self.max_len_ratio))

@@ -173,7 +173,7 @@ class BaseAttention(nn.Module):
         self.mask = None
         self.k_len = None
 
-    def set_mem(self):
+    def set_mem(self, prev_att):
         pass
 
     def compute_mask(self, k, k_len):

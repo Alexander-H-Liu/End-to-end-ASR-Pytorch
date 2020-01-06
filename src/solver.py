@@ -102,6 +102,8 @@ class BaseSolver():
             # if self.amp:
             #    amp.load_state_dict(ckpt['amp'])
             # Load task-dependent items
+            metric = "None"
+            score = 0.0
             for k, v in ckpt.items():
                 if type(v) is float:
                     metric, score = k, v
