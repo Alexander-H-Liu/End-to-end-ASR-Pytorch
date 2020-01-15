@@ -12,7 +12,7 @@ from src.module import VGGExtractor, CNNExtractor, RNNLayer, ScaleDotAttention, 
 class ASR(nn.Module):
     ''' ASR model, including Encoder/Decoder(s)'''
 
-    def __init__(self, input_size, vocab_size, ctc_weight, encoder, attention, decoder, emb_drop=0.0):
+    def __init__(self, input_size, vocab_size, init_adadelta, ctc_weight, encoder, attention, decoder, emb_drop=0.0):
         super(ASR, self).__init__()
 
         # Setup
@@ -38,10 +38,11 @@ class ASR(nn.Module):
                 self.encoder.out_dim, query_dim, **attention)
 
         # Init
-        # self.apply(init_weights)
-        # for l in range(self.decoder.layer):
-        #     bias = getattr(self.decoder.layers, 'bias_ih_l{}'.format(l))
-        #     bias = init_gate(bias)
+        if init_adadelta:
+            self.apply(init_weights)
+            for l in range(self.decoder.layer):
+                bias = getattr(self.decoder.layers, 'bias_ih_l{}'.format(l))
+                bias = init_gate(bias)
 
     def set_state(self, prev_state, prev_attn):
         ''' Setting up all memory states for beam decoding'''
