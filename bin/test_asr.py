@@ -47,8 +47,9 @@ class Solver(BaseSolver):
     def set_model(self):
         ''' Setup ASR model '''
         # Model
-        self.model = ASR(self.feat_dim, self.vocab_size,
-                         **self.config['model'])
+        init_adadelta = self.config['hparas']['optimizer'] == 'Adadelta'
+        self.model = ASR(self.feat_dim, self.vocab_size, init_adadelta, **
+                         self.config['model']).to(self.device)
 
         # Plug-ins
         if ('emb' in self.config) and (self.config['emb']['enable']) \

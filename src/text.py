@@ -62,7 +62,7 @@ class CharacterTextEncoder(_BaseTextEncoder):
         vocabs = []
         for t, idx in enumerate(idxs):
             v = self.idx_to_vocab(idx)
-            if idx == self.pad_idx or (ignore_repeat and t > 0 and idx == vocabs[t-1]):
+            if idx == self.pad_idx or (ignore_repeat and t > 0 and idx == idxs[t-1]):
                 continue
             elif idx == self.eos_idx:
                 break
