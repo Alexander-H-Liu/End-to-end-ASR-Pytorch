@@ -76,7 +76,7 @@ class ASR(nn.Module):
             feature_len   - [B]     Length of each sample in a batch
             decode_step   - [int]   The maximum number of attention decoder steps 
             tf_rate       - [0,1]   The probability to perform teacher forcing for each step
-            teacher       - [BxLxD] Ground truth for teacher forcing with sentence length L
+            teacher       - [BxL] Ground truth for teacher forcing with sentence length L
             emb_decoder   - [obj]   Introduces the word embedding decoder, different behavior for training/inference
                                     At training stage, this ONLY affects self-sampling (output remains the same)
                                     At inference stage, this affects output to become log prob. with distribution fusion

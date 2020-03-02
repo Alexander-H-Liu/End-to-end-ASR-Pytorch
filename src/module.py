@@ -39,7 +39,7 @@ class VGGExtractor(nn.Module):
             return int(input_dim/40), 40, (40//4)*self.hide_dim
         else:
             raise ValueError(
-                'Acoustic feature dimension for VGG should be 13/26/39(MFCC) or 40/80/120(Fbank) but got '+d)
+            'Acoustic feature dimension for VGG should be 13/26/39(MFCC) or 40/80/120(Fbank) but got '+input_dim)
 
     def view_input(self, feature, feat_len):
         # downsample time
