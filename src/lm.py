@@ -20,7 +20,7 @@ class RNNLM(nn.Module):
         self.rnn = getattr(nn, module.upper())(
             emb_dim, dim, num_layers=n_layers, dropout=dropout, batch_first=True)
         if not self.emb_tying:
-            self.trans = nn.Linear(emb_dim, vocab_size)
+            self.trans = nn.Linear(dim, vocab_size)
 
     def create_msg(self):
         # Messages for user
