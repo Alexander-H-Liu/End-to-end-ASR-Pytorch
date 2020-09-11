@@ -38,7 +38,8 @@ class Solver(BaseSolver):
         self.step = 0
     
     def fetch_data(self, data):
-        ''' Move data to device and compute text seq. length'''
+        ''' Move data to device and compute text seq. length,
+            For Greedy decoding only ( beam_decode & ctc_beam_decode otherwise)'''
         _, feat, feat_len, txt = data
         feat = feat.to(self.device)
         feat_len = feat_len.to(self.device)
