@@ -24,6 +24,7 @@ class Solver(BaseSolver):
         # The follow attribute should be identical to training config
         self.config['data']['audio'] = self.src_config['data']['audio']
         self.config['data']['text'] = self.src_config['data']['text']
+        self.config['hparas'] = self.src_config['hparas']
         self.config['model'] = self.src_config['model']
 
         # Output file

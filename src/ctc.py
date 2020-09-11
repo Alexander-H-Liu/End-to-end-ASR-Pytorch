@@ -6,7 +6,8 @@ from torch import nn
 import torch.nn.functional as F
 
 from src.lm import RNNLM
-from src.decode import LOG_ZERO
+
+LOG_ZERO = -10000000.0  # Log-zero for CTC
 
 class CTCPrefixScore():
     ''' 

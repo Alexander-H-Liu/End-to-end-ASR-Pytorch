@@ -40,9 +40,10 @@ class ASR(nn.Module):
         # Init
         if init_adadelta:
             self.apply(init_weights)
-            for l in range(self.decoder.layer):
-                bias = getattr(self.decoder.layers, 'bias_ih_l{}'.format(l))
-                bias = init_gate(bias)
+            if self.enable_att:
+                for l in range(self.decoder.layer):
+                    bias = getattr(self.decoder.layers, 'bias_ih_l{}'.format(l))
+                    bias = init_gate(bias)
 
     def set_state(self, prev_state, prev_attn):
         ''' Setting up all memory states for beam decoding'''
