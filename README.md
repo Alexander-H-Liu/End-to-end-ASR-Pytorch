@@ -27,6 +27,7 @@ Feel free to use/modify them, any bug report or improvement suggestion will be a
     - Beam search decoding
     - RNN language model training and joint decoding for ASR<sup>[6](#Reference)</sup>
     - Joint CTC-attention based decoding<sup>[6](#Reference)</sup>
+    - Greedy decoding & CTC beam search contributed by [Heng-Jui (Harry) Chang](https://github.com/vectominist)
 
 *You may checkout some example log files with TensorBoard by downloading them from [`coming soon`]()*
 
