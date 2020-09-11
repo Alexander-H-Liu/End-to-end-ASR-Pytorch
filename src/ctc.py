@@ -263,8 +263,10 @@ class CTCBeamDecoder(nn.Module):
         start = True
         for t in range(T):
             # greedily ignoring pads at the beginning of the sequence
-            if np.argmax(ctc_output[t]) == 0 and start: continue
-            else: start = False
+            if np.argmax(ctc_output[t]) == 0 and start:
+                continue
+            else:
+                start = False
             B_new = []
             for i in range(len(B)): # For y in B
                 B_i_new = copy.deepcopy(B[i])
@@ -308,21 +310,23 @@ class CTCBeamDecoder(nn.Module):
                     hyp_yk.add_token(k, ctc_output[t, k], lm_prob)
                     hyp_yk.updated_lm = False
                     B_new.append(hyp_yk)
-                B_i_new.orig_backup()
+                B_i_new.orig_backup() # Retrieve origin prob. before add_token()
                 B_new.append(B_i_new)
             del B
             B = []
 
-            # Remove duplicated sequences (O(NlogN))
+            # Remove duplicated sequences by sorting first (O(NlogN))
             B_new = sorted(B_new, key=lambda x: x.get_string())
-            for i in range(len(B_new)):
-                if len(B) > 0:
-                    if B_new[i].check_same(B[-1].y):
-                        if B_new[i].get_score() > B[-1].get_score():
-                            B[-1] = B_new[i]
-                        continue
-                    else: B.append(B_new[i])
-                else: B.append(B_new[i])
+            B.append(B_new[0]) # First Hyp always unique
+            for i in range(1,len(B_new)):
+                if B_new[i].check_same(B[-1].y):
+                    # Next Hyp is duplicated, pick the higher one
+                    if B_new[i].get_score() > B[-1].get_score():
+                        B[-1] = B_new[i]
+                    continue
+                else:
+                    # Next Hyp is different, hence valid
+                    B.append(B_new[i])
             del B_new
 
             # Find top W possible sequences
