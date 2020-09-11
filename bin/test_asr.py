@@ -6,9 +6,9 @@ from joblib import Parallel, delayed
 
 from src.solver import BaseSolver
 from src.asr import ASR
-from src.decode import BeamDecoder, CTCBeamDecoder
+from src.decode import BeamDecoder
+from src.ctc import CTCBeamDecoder
 from src.data import load_dataset
-
 
 class Solver(BaseSolver):
     ''' Solver for training'''
@@ -33,9 +33,7 @@ class Solver(BaseSolver):
         self.greedy = self.config['decode']['beam_size'] == 1
         if not self.greedy:
             self.config['data']['corpus']['batch_size'] = 1
-        else:
-            pass
-
+        
         self.step = 0
     
     def fetch_data(self, data):
@@ -74,23 +72,23 @@ class Solver(BaseSolver):
 
         self.ctc_only = False
         if self.greedy:
+            # Greedy decoding: attention-based if the ASR has a decoder, else use CTC
             self.decoder = copy.deepcopy(self.model).to(self.device)
         else:
             if (not self.model.enable_att) or self.config['decode'].get('ctc_weight', 0.0) == 1.0:
+                # Pure CTC Beam Decoder
                 assert self.config['decode']['beam_size'] <= self.config['decode']['vocab_candidate']
-                self.decoder = CTCBeamDecoder(self.model.to(self.device), 
-                    [1] + [r for r in range(3, self.vocab_size)], 
-                    self.config['decode']['beam_size'], 
+                self.decoder = CTCBeamDecoder(self.model.to(self.device),
+                    [1] + [r for r in range(3, self.vocab_size)],
+                    self.config['decode']['beam_size'],
                     self.config['decode']['vocab_candidate'],
-                    self.config['decode']['max_len_ratio'],
                     lm_path=self.config['decode']['lm_path'],
                     lm_config=self.config['decode']['lm_config'],
                     lm_weight=self.config['decode']['lm_weight'],
-                    lm_temperature=self.config['decode'].get('lm_temperature', 1.0),
                     device=self.device)
                 self.ctc_only = True
             else:
-                # Beam decoder
+                # Joint CTC-Attention Beam Decoder
                 self.decoder = BeamDecoder(
                     self.model.cpu(), self.emb_decoder, **self.config['decode'])
         
@@ -99,6 +97,7 @@ class Solver(BaseSolver):
         del self.emb_decoder
 
     def greedy_decode(self, dv_set):
+        ''' Greedy Decoding '''
         results = []
         for i,data in enumerate(dv_set):
             self.progress('Valid step - {}/{}'.format(i+1,len(dv_set)))
@@ -136,7 +135,7 @@ class Solver(BaseSolver):
                     self.cur_output_path))
                 self.write_hyp(results, self.cur_output_path, '-')
             elif self.ctc_only:
-                # CTC decode
+                # CTC beam decode
                 # Additional output to store all beams
                 self.cur_beam_path = self.output_file.format(s,
                     'beam-{}-{}'.format(self.config['decode']['beam_size'], self.config['decode']['lm_weight']))
@@ -149,8 +148,8 @@ class Solver(BaseSolver):
                 results = Parallel(n_jobs=self.paras.njobs)(delayed(ctc_beam_decode_func)(data) for data in tqdm(ds))
                 self.verbose('Results/Beams will be stored at {} / {}'.format(self.cur_output_path,self.cur_beam_path))
                 self.write_hyp(results, self.cur_output_path, self.cur_beam_path)
-                torch.cuda.empty_cache()
             else:
+                # Joint CTC-Attention beam decode
                 # Additional output to store all beams
                 self.cur_beam_path = self.output_file.format(s,
                     'beam-{}-{}'.format(self.config['decode']['beam_size'], self.config['decode']['lm_weight']))
@@ -168,12 +167,12 @@ class Solver(BaseSolver):
                     'Results/Beams will be stored at {} / {}.'.format(self.cur_output_path, self.cur_beam_path))
                 self.write_hyp(results, self.cur_output_path,
                                self.cur_beam_path)
-                torch.cuda.empty_cache()
         self.verbose('All done !')
 
     def write_hyp(self, results, best_path, beam_path):
         '''Record decoding results'''
         if self.greedy:
+            # Ignores repeated symbols if is decoded with CTC
             ignore_repeat = not self.decoder.enable_att
         else:
             ignore_repeat = False
@@ -186,12 +185,9 @@ class Solver(BaseSolver):
             
             truth = self.tokenizer.decode(truth)
             with open(best_path, 'a') as f:
-                if type(hyp_seqs[0]) is not str:
-                    hyp_seqs[0] = ' '
                 if len(hyp_seqs[0]) == 0:
+                    # Set the sequence to a whitespace if it was empty
                     hyp_seqs[0] = ' '
-                if len(truth) == 0:
-                    truth = ' '
                 f.write('\t'.join([name, hyp_seqs[0], truth])+'\n')
             if not self.greedy:
                 with open(beam_path, 'a', encoding='UTF-8') as f:

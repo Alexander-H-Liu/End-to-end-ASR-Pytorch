@@ -160,4 +160,5 @@ Options for decoding that *will* dramatically change the decoding result.
 | lm_config | `str` the path to the config of pre-trained LM for joint decoding| [paper](https://arxiv.org/pdf/1706.02737.pdf) |
 | lm_weight | `float` the weight for RNNLM in joint decoding| [paper](https://arxiv.org/pdf/1706.02737.pdf), slower inference |
 | ctc_weight| `float` the weight for CTC network in joint decoding, this will only be available if `ctc_weight` was not zero in training config | [paper](https://arxiv.org/pdf/1706.02737.pdf), slower inference |
+| vocab_candidate| `int` the number of vocabulary candidates considered in CTC beam decoding, the smaller the value the faster the decoding, but it must be greater than `beam_size` | [paper](http://proceedings.mlr.press/v32/graves14.pdf)|
 
