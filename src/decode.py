@@ -1,14 +1,13 @@
 import yaml
-import torch
 import numpy as np
+import torch
 from torch import nn
 import torch.nn.functional as F
 
 from src.lm import RNNLM
-from src.ctc import CTCPrefixScore
+from src.ctc import CTCPrefixScore, LOG_ZERO
 
 CTC_BEAM_RATIO = 1.5   # DO NOT CHANGE THIS, MAY CAUSE OOM
-LOG_ZERO = -10000000.0  # Log-zero for CTC
 
 
 class BeamDecoder(nn.Module):
